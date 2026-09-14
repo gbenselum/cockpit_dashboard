@@ -6,8 +6,9 @@
     <title>System Dashboard - Cockpit Plugin</title>
     <link rel="stylesheet" href="dashboard.css">
 </head>
-<body>
-    <div id="app">
+<body class="pf-v6-m-tabular-nums">
+    <div id="dashboard-page" class="ct-page-fill dashboard-page">
+
         <!-- Standalone Browser Preview Banner -->
         <div id="demo-banner" class="demo-banner">
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -18,40 +19,28 @@
                 </svg>
                 <span><strong>Preview Mode:</strong> Running standalone outside of Cockpit. Telemetry is simulated for demonstration. Open within Cockpit to monitor real hardware.</span>
             </div>
-            <span style="font-size: 0.75rem; opacity: 0.85;">https://github.com/cockpit-project/cockpit</span>
+            <span style="font-size: 0.75rem; opacity: 0.85;">Cockpit Project</span>
         </div>
 
-        <!-- Header Toolbar -->
-        <header class="dashboard-header">
-            <div class="brand-section">
-                <div class="brand-icon">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
-                    </svg>
-                </div>
-                <div class="brand-title-group">
-                    <span class="brand-title">System Dashboard</span>
-                    <span class="brand-subtitle">Real-Time Telemetry &bull; Storage, CPU, RAM</span>
-                </div>
-                <div id="status-pill" class="status-pill">
+        <!-- Page Header / Masthead -->
+        <header class="pf-v6-c-page__header">
+            <div class="pf-v6-c-page__header-title-group">
+                <h1 class="pf-v6-c-title">Dashboard</h1>
+                <span id="status-pill" class="pf-v6-c-label pf-m-green">
                     <span class="status-dot"></span>
                     <span id="status-text">Live (2s)</span>
-                </div>
+                </span>
             </div>
 
-            <div class="toolbar-controls">
-                <!-- Polling Interval Selector -->
-                <div class="control-item">
-                    <label for="interval-select">Rate:</label>
-                    <select id="interval-select" class="select-control">
-                        <option value="1000">1s (Fast)</option>
-                        <option value="2000" selected>2s (Normal)</option>
-                        <option value="5000">5s (Eco)</option>
-                    </select>
-                </div>
+            <div class="pf-v6-c-page__header-tools">
+                <label for="interval-select" class="ct-subtext">Rate:</label>
+                <select id="interval-select" class="pf-v6-c-form-control">
+                    <option value="1000">1s (Fast)</option>
+                    <option value="2000" selected>2s (Normal)</option>
+                    <option value="5000">5s (Eco)</option>
+                </select>
 
-                <!-- Pause / Resume Button -->
-                <button id="btn-pause" class="btn" title="Pause or resume live metric streaming">
+                <button id="btn-pause" class="pf-v6-c-button pf-m-secondary" title="Pause or resume live metric streaming">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="6" y="4" width="4" height="16"></rect>
                         <rect x="14" y="4" width="4" height="16"></rect>
@@ -59,8 +48,7 @@
                     <span>Pause</span>
                 </button>
 
-                <!-- Refresh Now Button -->
-                <button id="btn-refresh" class="btn" title="Force an immediate telemetry refresh">
+                <button id="btn-refresh" class="pf-v6-c-button pf-m-primary" title="Force an immediate telemetry refresh">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="23 4 23 10 17 10"></polyline>
                         <polyline points="1 20 1 14 7 14"></polyline>
@@ -69,422 +57,318 @@
                     <span>Refresh</span>
                 </button>
 
-                <!-- Theme Selector -->
-                <div class="control-item">
-                    <label for="theme-select">Theme:</label>
-                    <select id="theme-select" class="select-control">
-                        <option value="auto">Auto</option>
-                        <option value="dark">Dark</option>
-                        <option value="light">Light</option>
-                    </select>
-                </div>
+                <label for="theme-select" class="ct-subtext" style="margin-left: 6px;">Theme:</label>
+                <select id="theme-select" class="pf-v6-c-form-control">
+                    <option value="auto">Auto</option>
+                    <option value="dark">Dark</option>
+                    <option value="light">Light</option>
+                </select>
             </div>
         </header>
 
-        <!-- Main Dashboard Content -->
-        <main class="dashboard-content">
-            <!-- 1. Top Metrics Overview Grid -->
-            <section class="overview-grid">
-                <!-- CPU Metric Card -->
-                <div class="metric-card">
-                    <div class="metric-card-header">
-                        <span class="metric-title">CPU Utilization</span>
-                        <div class="metric-icon-badge cpu">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
-                                <rect x="9" y="9" width="6" height="6"></rect>
-                                <line x1="9" y1="1" x2="9" y2="4"></line>
-                                <line x1="15" y1="1" x2="15" y2="4"></line>
-                                <line x1="9" y1="20" x2="9" y2="23"></line>
-                                <line x1="15" y1="20" x2="15" y2="23"></line>
-                                <line x1="20" y1="9" x2="23" y2="9"></line>
-                                <line x1="20" y1="14" x2="23" y2="14"></line>
-                                <line x1="1" y1="9" x2="4" y2="9"></line>
-                                <line x1="1" y1="14" x2="4" y2="14"></line>
-                            </svg>
+        <!-- Main Content Area -->
+        <main class="pf-v6-c-page__main">
+
+            <!-- 1. Real-Time Telemetry Plot Card (Identical to Cockpit Networking Plot) -->
+            <section class="ct-plot-card">
+                <div class="ct-plot-header">
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <span style="font-weight: 600; font-size: 0.95rem; color: var(--pf-t--global--text--color--regular);">Real-time Telemetry</span>
+                        <!-- Plot View Switcher Tabs -->
+                        <div class="ct-plot-tabs">
+                            <button id="tab-plot-io" class="ct-plot-tab-btn active">Storage I/O</button>
+                            <button id="tab-plot-cpu" class="ct-plot-tab-btn">CPU Load</button>
+                            <button id="tab-plot-ram" class="ct-plot-tab-btn">Memory</button>
                         </div>
                     </div>
-                    <div class="metric-body">
-                        <div style="display: flex; align-items: baseline;">
-                            <span id="cpu-huge-val" class="metric-value-huge">0.0</span>
-                            <span class="metric-unit">%</span>
+
+                    <!-- Dynamic Legend -->
+                    <div id="plot-legend" class="ct-plot-legend">
+                        <div class="ct-legend-item">
+                            <span class="ct-legend-dot" style="background-color: var(--pf-t--chart--color--blue--300);"></span>
+                            <span>Read: <strong id="legend-read-val" style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">0 KB/s</strong></span>
                         </div>
-                        <span id="cpu-pill" class="metric-pill normal">Normal</span>
-                    </div>
-                    <div class="metric-progress-wrapper">
-                        <div class="progress-track">
-                            <div id="cpu-progress-bar" class="progress-fill primary" style="width: 0%;"></div>
+                        <div class="ct-legend-item">
+                            <span class="ct-legend-dot" style="background-color: var(--pf-t--chart--color--orange--300);"></span>
+                            <span>Write: <strong id="legend-write-val" style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">0 KB/s</strong></span>
                         </div>
-                    </div>
-                    <div class="metric-footer">
-                        <span id="cpu-subtext">Loading cores...</span>
-                        <span id="cpu-load-text">Load: 0.00, 0.00, 0.00</span>
+                        <div class="ct-legend-item">
+                            <span style="color: var(--pf-t--global--text--color--muted);">&bull;</span>
+                            <span>IOPS: <strong id="legend-iops-val" style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">0</strong></span>
+                        </div>
                     </div>
                 </div>
 
-                <!-- RAM Metric Card -->
-                <div class="metric-card">
-                    <div class="metric-card-header">
-                        <span class="metric-title">Memory (RAM)</span>
-                        <div class="metric-icon-badge ram">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M6 19v-3M10 19v-3M14 19v-3M18 19v-3M2 8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2Z"></path>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="metric-body">
-                        <div style="display: flex; align-items: baseline;">
-                            <span id="ram-huge-val" class="metric-value-huge">0.0</span>
-                            <span class="metric-unit">%</span>
-                        </div>
-                        <span id="ram-pill" class="metric-pill normal">Normal</span>
-                    </div>
-                    <div class="metric-progress-wrapper">
-                        <div class="progress-track">
-                            <div id="ram-progress-bar" class="progress-fill purple" style="width: 0%;"></div>
-                        </div>
-                    </div>
-                    <div class="metric-footer">
-                        <span id="ram-subtext">0 B / 0 B</span>
-                        <span id="ram-avail-text">Avail: 0 B</span>
-                    </div>
+                <!-- Plot Canvas / SVG -->
+                <div class="ct-plot-container">
+                    <svg id="telemetry-plot-svg" class="ct-plot" viewBox="0 0 800 160" preserveAspectRatio="none"></svg>
                 </div>
+            </section>
 
-                <!-- Storage Metric Card -->
-                <div class="metric-card">
-                    <div class="metric-card-header">
-                        <span class="metric-title">Storage Utilization</span>
-                        <div class="metric-icon-badge storage">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="22" y1="12" x2="2" y2="12"></line>
-                                <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>
-                                <line x1="6" y1="16" x2="6.01" y2="16"></line>
-                                <line x1="10" y1="16" x2="10.01" y2="16"></line>
-                            </svg>
+            <!-- 2. Overview Stat Cards Gallery -->
+            <section class="ct-overview-gallery">
+                <!-- Storage Card -->
+                <div class="ct-stat-card">
+                    <div class="ct-stat-card-header">
+                        <span class="ct-stat-title">Storage Used</span>
+                        <span id="storage-pill" class="pf-v6-c-label pf-m-green">Normal</span>
+                    </div>
+                    <div class="ct-stat-body">
+                        <span id="storage-huge-val" class="ct-stat-value">0.0</span>
+                        <span class="ct-stat-unit">%</span>
+                    </div>
+                    <div class="pf-v6-c-progress">
+                        <div class="pf-v6-c-progress__bar">
+                            <div id="storage-progress-bar" class="pf-v6-c-progress__indicator green" style="width: 0%;"></div>
                         </div>
                     </div>
-                    <div class="metric-body">
-                        <div style="display: flex; align-items: baseline;">
-                            <span id="storage-huge-val" class="metric-value-huge">0.0</span>
-                            <span class="metric-unit">%</span>
-                        </div>
-                        <span id="storage-pill" class="metric-pill normal">Normal</span>
-                    </div>
-                    <div class="metric-progress-wrapper">
-                        <div class="progress-track">
-                            <div id="storage-progress-bar" class="progress-fill success" style="width: 0%;"></div>
-                        </div>
-                    </div>
-                    <div class="metric-footer">
+                    <div class="ct-stat-footer">
                         <span id="storage-subtext">0 B / 0 B</span>
                         <span id="storage-free-text">Free: 0 B</span>
                     </div>
                 </div>
 
-                <!-- Real-Time Disk I/O Card -->
-                <div class="metric-card">
-                    <div class="metric-card-header">
-                        <span class="metric-title">Disk I/O Throughput</span>
-                        <div class="metric-icon-badge io">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                            </svg>
+                <!-- Disk I/O Card -->
+                <div class="ct-stat-card">
+                    <div class="ct-stat-card-header">
+                        <span class="ct-stat-title">Storage Activity</span>
+                        <span id="io-disks-text" class="pf-v6-c-badge">0 Disks</span>
+                    </div>
+                    <div class="ct-stat-body" style="gap: 12px;">
+                        <div>
+                            <div class="ct-subtext">READ</div>
+                            <span id="io-read-val" class="ct-stat-value" style="font-size: 1.35rem; color: var(--pf-t--chart--color--blue--300);">0 KB/s</span>
+                        </div>
+                        <div>
+                            <div class="ct-subtext">WRITE</div>
+                            <span id="io-write-val" class="ct-stat-value" style="font-size: 1.35rem; color: var(--pf-t--chart--color--orange--300);">0 KB/s</span>
                         </div>
                     </div>
-                    <div class="metric-body">
-                        <div class="dual-io-metrics">
-                            <div class="io-metric-col">
-                                <div class="sub-label">Read Rate</div>
-                                <div id="io-read-val" class="sub-value" style="color: var(--color-success);">0 KB/s</div>
+                    <div class="pf-v6-c-progress">
+                        <div class="pf-v6-c-progress__bar">
+                            <div class="pf-v6-c-progress__indicator blue" style="width: 100%;"></div>
+                        </div>
+                    </div>
+                    <div class="ct-stat-footer">
+                        <span>Combined IOPS:</span>
+                        <strong id="io-iops-val" style="color: var(--pf-t--global--text--color--regular);">0 IOPS</strong>
+                    </div>
+                </div>
+
+                <!-- CPU Card -->
+                <div class="ct-stat-card">
+                    <div class="ct-stat-card-header">
+                        <span class="ct-stat-title">CPU Utilization</span>
+                        <span id="cpu-pill" class="pf-v6-c-label pf-m-green">Normal</span>
+                    </div>
+                    <div class="ct-stat-body">
+                        <span id="cpu-huge-val" class="ct-stat-value">0.0</span>
+                        <span class="ct-stat-unit">%</span>
+                    </div>
+                    <div class="pf-v6-c-progress">
+                        <div class="pf-v6-c-progress__bar">
+                            <div id="cpu-progress-bar" class="pf-v6-c-progress__indicator blue" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                    <div class="ct-stat-footer">
+                        <span id="cpu-subtext">Scanning...</span>
+                        <span id="cpu-load-text">Load: 0.00</span>
+                    </div>
+                </div>
+
+                <!-- RAM Card -->
+                <div class="ct-stat-card">
+                    <div class="ct-stat-card-header">
+                        <span class="ct-stat-title">Memory (RAM)</span>
+                        <span id="ram-pill" class="pf-v6-c-label pf-m-green">Normal</span>
+                    </div>
+                    <div class="ct-stat-body">
+                        <span id="ram-huge-val" class="ct-stat-value">0.0</span>
+                        <span class="ct-stat-unit">%</span>
+                    </div>
+                    <div class="pf-v6-c-progress">
+                        <div class="pf-v6-c-progress__bar">
+                            <div id="ram-progress-bar" class="pf-v6-c-progress__indicator purple" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                    <div class="ct-stat-footer">
+                        <span id="ram-subtext">0 B / 0 B</span>
+                        <span id="ram-avail-text">Avail: 0 B</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. Disks Card (Physical & Block Devices - exact Networking "Interfaces" style) -->
+            <section class="pf-v6-c-card ct-card" id="card-disks">
+                <div class="pf-v6-c-card__header">
+                    <div class="pf-v6-c-card__header-main">
+                        <h2 class="pf-v6-c-card__title">Disks</h2>
+                        <span id="disks-count-badge" class="pf-v6-c-badge">0</span>
+                    </div>
+                    <div class="pf-v6-c-card__actions">
+                        <input type="text" id="storage-search" class="pf-v6-c-form-control" placeholder="Filter disks and mounts..." style="min-width: 220px;">
+                    </div>
+                </div>
+                <div class="pf-v6-c-card__body pf-m-no-padding">
+                    <table class="pf-v6-c-table pf-m-compact" id="disks-table">
+                        <thead>
+                            <tr>
+                                <th>Device</th>
+                                <th>Model &amp; Bus</th>
+                                <th>Type</th>
+                                <th>Capacity</th>
+                                <th>Read Rate</th>
+                                <th>Write Rate</th>
+                                <th>Throughput</th>
+                                <th>Partition Allocation</th>
+                            </tr>
+                        </thead>
+                        <tbody id="disks-table-body">
+                            <tr><td colspan="8" style="text-align: center; color: var(--pf-t--global--text--color--muted); padding: 24px;">Scanning block devices...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 4. Filesystem Volumes & Mounts Card -->
+            <section class="pf-v6-c-card ct-card" id="card-volumes">
+                <div class="pf-v6-c-card__header">
+                    <div class="pf-v6-c-card__header-main">
+                        <h2 class="pf-v6-c-card__title">Filesystem Volumes</h2>
+                        <span id="volumes-count-badge" class="pf-v6-c-badge">0</span>
+                    </div>
+                    <div class="pf-v6-c-card__actions">
+                        <div class="ct-plot-tabs">
+                            <button id="tab-standard-mounts" class="ct-plot-tab-btn active">Standard Filesystems</button>
+                            <button id="tab-all-mounts" class="ct-plot-tab-btn">All Mounts</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="pf-v6-c-card__body pf-m-no-padding">
+                    <table class="pf-v6-c-table pf-m-compact" id="volumes-table">
+                        <thead>
+                            <tr>
+                                <th>Mount Point</th>
+                                <th>Device Source</th>
+                                <th>FS Type</th>
+                                <th>Total Size</th>
+                                <th>Used</th>
+                                <th>Available</th>
+                                <th>Usage</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="volumes-table-body">
+                            <tr><td colspan="8" style="text-align: center; color: var(--pf-t--global--text--color--muted); padding: 24px;">Scanning mounted volumes...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 5. Processor & Cores Card -->
+            <section class="pf-v6-c-card ct-card" id="card-cpu">
+                <div class="pf-v6-c-card__header">
+                    <div class="pf-v6-c-card__header-main">
+                        <h2 class="pf-v6-c-card__title">Processor &amp; Cores</h2>
+                        <span id="cores-count-badge" class="pf-v6-c-badge">0 Cores</span>
+                    </div>
+                </div>
+                <div class="pf-v6-c-card__body">
+                    <div id="cores-grid" class="ct-cores-grid">
+                        <div style="color: var(--pf-t--global--text--color--muted); padding: 12px;">Scanning CPU cores...</div>
+                    </div>
+
+                    <!-- Hardware Telemetry Description List -->
+                    <div class="pf-v6-c-description-list">
+                        <div class="pf-v6-c-description-list__group">
+                            <span class="pf-v6-c-description-list__term">Model</span>
+                            <span id="spec-cpu-model" class="pf-v6-c-description-list__description">Scanning...</span>
+                        </div>
+                        <div class="pf-v6-c-description-list__group">
+                            <span class="pf-v6-c-description-list__term">Architecture</span>
+                            <span id="spec-cpu-arch" class="pf-v6-c-description-list__description">Scanning...</span>
+                        </div>
+                        <div class="pf-v6-c-description-list__group">
+                            <span class="pf-v6-c-description-list__term">Sockets / Cores</span>
+                            <span id="spec-cpu-cores" class="pf-v6-c-description-list__description">Scanning...</span>
+                        </div>
+                        <div class="pf-v6-c-description-list__group">
+                            <span class="pf-v6-c-description-list__term">Frequency</span>
+                            <span id="spec-cpu-freq" class="pf-v6-c-description-list__description">Scanning...</span>
+                        </div>
+                        <div class="pf-v6-c-description-list__group">
+                            <span class="pf-v6-c-description-list__term">Load Averages</span>
+                            <span id="spec-cpu-load" class="pf-v6-c-description-list__description">0.00, 0.00, 0.00</span>
+                        </div>
+                        <div class="pf-v6-c-description-list__group">
+                            <span class="pf-v6-c-description-list__term">Uptime</span>
+                            <span id="spec-cpu-uptime" class="pf-v6-c-description-list__description">0s</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 6. Memory & Swap Card -->
+            <section class="pf-v6-c-card ct-card" id="card-ram">
+                <div class="pf-v6-c-card__header">
+                    <div class="pf-v6-c-card__header-main">
+                        <h2 class="pf-v6-c-card__title">Memory (RAM) &amp; Swap</h2>
+                    </div>
+                </div>
+                <div class="pf-v6-c-card__body">
+                    <!-- Segmented Memory Distribution Bar -->
+                    <div style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px;">
+                            <span>Memory Distribution</span>
+                            <span id="ram-total-val" style="font-family: var(--pf-t--global--font--family--mono);">0 B</span>
+                        </div>
+                        <div class="ct-memory-track">
+                            <div id="mem-bar-used" class="ct-memory-seg used" style="width: 0%;" title="Used Memory"></div>
+                            <div id="mem-bar-cached" class="ct-memory-seg cached" style="width: 0%;" title="Buffers & Cache"></div>
+                            <div id="mem-bar-free" class="ct-memory-seg free" style="width: 100%;" title="Free Memory"></div>
+                        </div>
+                        <div style="display: flex; gap: 20px; font-size: 0.76rem; color: var(--pf-t--global--text--color--secondary);">
+                            <span><strong style="color: #8b5cf6;">&bull;</strong> Used: <strong id="mem-legend-used-val" style="color: var(--pf-t--global--text--color--regular);">0 B</strong></span>
+                            <span><strong style="color: #009596;">&bull;</strong> Buffers &amp; Cache: <strong id="mem-legend-cached-val" style="color: var(--pf-t--global--text--color--regular);">0 B</strong></span>
+                            <span><strong style="color: #6a6e73;">&bull;</strong> Free: <strong id="mem-legend-free-val" style="color: var(--pf-t--global--text--color--regular);">0 B</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Swap & Memory Details Grid -->
+                    <div class="pf-v6-c-description-list" style="margin-top: 0; padding-top: 0; border-top: none;">
+                        <div class="pf-v6-c-description-list__group">
+                            <span class="pf-v6-c-description-list__term">Available RAM</span>
+                            <span id="ram-available-val" class="pf-v6-c-description-list__description">0 B</span>
+                        </div>
+                        <div class="pf-v6-c-description-list__group">
+                            <span class="pf-v6-c-description-list__term">Buffers</span>
+                            <span id="ram-buffers-val" class="pf-v6-c-description-list__description">0 B</span>
+                        </div>
+                        <div class="pf-v6-c-description-list__group">
+                            <span class="pf-v6-c-description-list__term">Page Cache</span>
+                            <span id="ram-cached-val" class="pf-v6-c-description-list__description">0 B</span>
+                        </div>
+                        <div class="pf-v6-c-description-list__group">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span class="pf-v6-c-description-list__term">Swap Usage</span>
+                                <span id="swap-text-val" style="font-family: var(--pf-t--global--font--family--mono); font-size: 0.78rem; font-weight: 700;">0.0%</span>
                             </div>
-                            <div class="io-metric-col">
-                                <div class="sub-label">Write Rate</div>
-                                <div id="io-write-val" class="sub-value" style="color: var(--color-warning);">0 KB/s</div>
+                            <div class="pf-v6-c-progress__bar" style="margin: 4px 0;">
+                                <div id="swap-bar-fill" class="pf-v6-c-progress__indicator purple" style="width: 0%;"></div>
+                            </div>
+                            <div class="ct-subtext" style="display: flex; justify-content: space-between;">
+                                <span>Used: <strong id="swap-used-val">0 B</strong></span>
+                                <span>Total: <strong id="swap-total-val">0 B</strong></span>
                             </div>
                         </div>
                     </div>
-                    <div class="metric-progress-wrapper" style="margin-bottom: 6px;">
-                        <div style="font-size: 0.76rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
-                            <span>Combined Activity</span>
-                            <span id="io-iops-val" style="font-weight: 700; color: var(--text-primary);">0 IOPS</span>
-                        </div>
-                    </div>
-                    <div class="metric-footer">
-                        <span id="io-disks-text">Scanning disks...</span>
-                        <span style="color: var(--color-cyan);">Real-time</span>
-                    </div>
                 </div>
             </section>
 
-            <!-- 2. Real-Time Telemetry SVG Graphs (60s Scrolling Window) -->
-            <section class="charts-grid">
-                <!-- CPU History Graph -->
-                <div class="chart-card">
-                    <div class="chart-header">
-                        <div class="chart-title-group">
-                            <span class="chart-title">CPU History (60s)</span>
-                        </div>
-                        <div class="chart-legend">
-                            <span id="cpu-chart-current" style="font-family: monospace; font-weight: 700; color: var(--color-primary);">0.0%</span>
-                        </div>
-                    </div>
-                    <div class="chart-svg-container">
-                        <svg id="cpu-chart-svg" class="chart-svg" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
-                    </div>
-                </div>
-
-                <!-- RAM History Graph -->
-                <div class="chart-card">
-                    <div class="chart-header">
-                        <div class="chart-title-group">
-                            <span class="chart-title">RAM History (60s)</span>
-                        </div>
-                        <div class="chart-legend">
-                            <span id="ram-chart-current" style="font-family: monospace; font-weight: 700; color: var(--color-purple);">0.0%</span>
-                        </div>
-                    </div>
-                    <div class="chart-svg-container">
-                        <svg id="ram-chart-svg" class="chart-svg" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
-                    </div>
-                </div>
-
-                <!-- Disk I/O History Graph -->
-                <div class="chart-card">
-                    <div class="chart-header">
-                        <div class="chart-title-group">
-                            <span class="chart-title">Disk I/O Throughput (60s)</span>
-                        </div>
-                        <div class="chart-legend">
-                            <div class="legend-item">
-                                <span class="legend-dot" style="background-color: var(--color-success);"></span>
-                                <span>Read</span>
-                            </div>
-                            <div class="legend-item">
-                                <span class="legend-dot" style="background-color: var(--color-warning);"></span>
-                                <span>Write</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="chart-svg-container">
-                        <svg id="io-chart-svg" class="chart-svg" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 3. Storage Monitoring: Disks & Volumes -->
-            <section class="section-panel" id="section-storage">
-                <div class="section-header">
-                    <div class="section-title-group">
-                        <div class="section-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="22" y1="12" x2="2" y2="12"></line>
-                                <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>
-                                <line x1="6" y1="16" x2="6.01" y2="16"></line>
-                                <line x1="10" y1="16" x2="10.01" y2="16"></line>
-                            </svg>
-                        </div>
-                        <h2 class="section-title">Storage by Disk &amp; Volume</h2>
-                        <span id="disks-count-badge" class="section-badge">0</span>
-                    </div>
-
-                    <div class="section-actions">
-                        <!-- Search Box -->
-                        <input type="text" id="storage-search" class="search-input" placeholder="Search disk, mount, fs...">
-
-                        <!-- Filter Tabs -->
-                        <div class="tab-group">
-                            <button id="tab-standard-mounts" class="tab-btn active">Standard Filesystems</button>
-                            <button id="tab-all-mounts" class="tab-btn">All Mounts</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Sub-Section: Physical Disks Cards -->
-                <div>
-                    <h3 style="font-size: 0.92rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">
-                        Physical &amp; Virtual Block Devices (Disks)
-                    </h3>
-                    <div id="disks-grid" class="disks-grid">
-                        <div style="color: var(--text-muted); padding: 16px;">Scanning storage devices...</div>
-                    </div>
-                </div>
-
-                <!-- Sub-Section: Mounted Volumes Table -->
-                <div style="margin-top: 8px;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                        <h3 style="font-size: 0.92rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
-                            Mounted Volumes &amp; Filesystems
-                        </h3>
-                        <span id="volumes-count-badge" class="section-badge">0</span>
-                    </div>
-
-                    <div class="table-container">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Mount Point</th>
-                                    <th>Device Source</th>
-                                    <th>FS Type</th>
-                                    <th>Total Size</th>
-                                    <th>Used</th>
-                                    <th>Available</th>
-                                    <th>Usage Bar</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="volumes-table-body">
-                                <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">Scanning mounted volumes...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 4. CPU Telemetry & Per-Core Breakdown -->
-            <section class="section-panel" id="section-cpu">
-                <div class="section-header">
-                    <div class="section-title-group">
-                        <div class="section-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
-                                <rect x="9" y="9" width="6" height="6"></rect>
-                            </svg>
-                        </div>
-                        <h2 class="section-title">CPU Cores &amp; System Performance</h2>
-                        <span id="cores-count-badge" class="section-badge">0 Cores</span>
-                    </div>
-                </div>
-
-                <!-- Per-Core Utilization Grid -->
-                <div>
-                    <h3 style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px;">
-                        Per-Core Real-Time Load
-                    </h3>
-                    <div id="cores-grid" class="cores-grid">
-                        <div style="color: var(--text-muted); padding: 16px;">Scanning CPU cores...</div>
-                    </div>
-                </div>
-
-                <!-- Hardware Specs Grid -->
-                <div style="margin-top: 8px;">
-                    <h3 style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px;">
-                        Hardware &amp; System Telemetry
-                    </h3>
-                    <div class="specs-grid">
-                        <div class="spec-box">
-                            <span class="spec-label">Processor Model</span>
-                            <span id="spec-cpu-model" class="spec-val">Scanning...</span>
-                        </div>
-                        <div class="spec-box">
-                            <span class="spec-label">Architecture</span>
-                            <span id="spec-cpu-arch" class="spec-val">Scanning...</span>
-                        </div>
-                        <div class="spec-box">
-                            <span class="spec-label">Cores / Threads</span>
-                            <span id="spec-cpu-cores" class="spec-val">Scanning...</span>
-                        </div>
-                        <div class="spec-box">
-                            <span class="spec-label">Scaling Frequency</span>
-                            <span id="spec-cpu-freq" class="spec-val">Scanning...</span>
-                        </div>
-                        <div class="spec-box">
-                            <span class="spec-label">Load Averages (1m, 5m, 15m)</span>
-                            <span id="spec-cpu-load" class="spec-val">0.00, 0.00, 0.00</span>
-                        </div>
-                        <div class="spec-box">
-                            <span class="spec-label">System Uptime</span>
-                            <span id="spec-cpu-uptime" class="spec-val">0s</span>
-                        </div>
-                        <div class="spec-box">
-                            <span class="spec-label">Processes (Active / Total)</span>
-                            <span id="spec-cpu-procs" class="spec-val">0/0</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 5. RAM & Memory Telemetry -->
-            <section class="section-panel" id="section-ram">
-                <div class="section-header">
-                    <div class="section-title-group">
-                        <div class="section-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M6 19v-3M10 19v-3M14 19v-3M18 19v-3M2 8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2Z"></path>
-                            </svg>
-                        </div>
-                        <h2 class="section-title">Memory Allocation &amp; Swap Space</h2>
-                    </div>
-                </div>
-
-                <!-- Segmented Memory Allocation Bar -->
-                <div class="memory-bar-container">
-                    <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; font-weight: 600;">
-                        <span>Physical Memory Distribution</span>
-                        <span id="ram-total-val" style="font-family: monospace;">0 B</span>
-                    </div>
-                    <div class="memory-bar-track">
-                        <div id="mem-bar-used" class="memory-bar-seg used" style="width: 0%;" title="Used Memory"></div>
-                        <div id="mem-bar-cached" class="memory-bar-seg cached" style="width: 0%;" title="Buffers & Cache"></div>
-                        <div id="mem-bar-free" class="memory-bar-seg free" style="width: 100%;" title="Free Memory"></div>
-                    </div>
-                    <div class="memory-legend">
-                        <div class="mem-legend-item">
-                            <span class="mem-legend-dot used"></span>
-                            <span>Used: <strong id="mem-legend-used-val">0 B</strong></span>
-                        </div>
-                        <div class="mem-legend-item">
-                            <span class="mem-legend-dot cached"></span>
-                            <span>Buffers &amp; Cache: <strong id="mem-legend-cached-val">0 B</strong></span>
-                        </div>
-                        <div class="mem-legend-item">
-                            <span class="mem-legend-dot free"></span>
-                            <span>Free: <strong id="mem-legend-free-val">0 B</strong></span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Memory & Swap Metrics Grid -->
-                <div class="specs-grid">
-                    <div class="spec-box">
-                        <span class="spec-label">Used RAM (Active)</span>
-                        <span id="ram-used-val" class="spec-val">0 B</span>
-                    </div>
-                    <div class="spec-box">
-                        <span class="spec-label">Available RAM</span>
-                        <span id="ram-available-val" class="spec-val">0 B</span>
-                    </div>
-                    <div class="spec-box">
-                        <span class="spec-label">Buffers</span>
-                        <span id="ram-buffers-val" class="spec-val">0 B</span>
-                    </div>
-                    <div class="spec-box">
-                        <span class="spec-label">Page Cache</span>
-                        <span id="ram-cached-val" class="spec-val">0 B</span>
-                    </div>
-                    <div class="spec-box">
-                        <span class="spec-label">Active Anon</span>
-                        <span id="ram-active-val" class="spec-val">0 B</span>
-                    </div>
-                    <div class="spec-box">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span class="spec-label">Swap Memory</span>
-                            <span id="swap-text-val" style="font-size: 0.8rem; font-weight: 700; font-family: monospace;">0.0%</span>
-                        </div>
-                        <div class="progress-track" style="margin: 6px 0;">
-                            <div id="swap-bar-fill" class="progress-fill purple" style="width: 0%;"></div>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-muted);">
-                            <span>Used: <span id="swap-used-val" style="color: var(--text-primary);">0 B</span></span>
-                            <span>Total: <span id="swap-total-val" style="color: var(--text-primary);">0 B</span></span>
-                            <span>Free: <span id="swap-free-val" style="color: var(--text-primary);">0 B</span></span>
-                        </div>
-                    </div>
-                </div>
-            </section>
         </main>
     </div>
 
-    <!-- Cockpit Bridge Script & Plugin Logic -->
+    <!-- Cockpit Bridge & Application Logic -->
     <script src="../base1/cockpit.js"></script>
     <script src="dashboard.js"></script>
 </body>

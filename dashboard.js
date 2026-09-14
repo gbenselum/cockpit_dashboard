@@ -1,6 +1,7 @@
 /**
  * Cockpit Dashboard Plugin - dashboard.js
- * Real-time monitoring engine for Storage (by Disk and Volume), CPU, and RAM
+ * Real-time monitoring engine for Storage (Disks & Volumes), CPU, and RAM
+ * PatternFly / Cockpit Networking Plugin Architecture
  */
 
 (function () {
@@ -14,13 +15,16 @@
         theme: localStorage.getItem("cockpit_dashboard_theme") || "auto",
         filterText: "",
         volumeFilter: "physical", // 'physical' or 'all'
+        plotView: "io",          // 'io', 'cpu', 'ram'
+        expandedDisks: new Set(),
         lastTimestamp: null,
         prevCpuStat: null,
         prevDiskStats: new Map(),
-        historyLength: 30,
+        historyLength: 45,
         history: {
             cpu: [],
             ram: [],
+            swap: [],
             diskReadMB: [],
             diskWriteMB: []
         },
@@ -40,7 +44,28 @@
             themeSelect: document.getElementById("theme-select"),
             demoBanner: document.getElementById("demo-banner"),
 
-            // Top Metric Cards
+            // Top Plot Card
+            tabPlotIo: document.getElementById("tab-plot-io"),
+            tabPlotCpu: document.getElementById("tab-plot-cpu"),
+            tabPlotRam: document.getElementById("tab-plot-ram"),
+            plotLegend: document.getElementById("plot-legend"),
+            telemetryPlotSvg: document.getElementById("telemetry-plot-svg"),
+            legendReadVal: document.getElementById("legend-read-val"),
+            legendWriteVal: document.getElementById("legend-write-val"),
+            legendIopsVal: document.getElementById("legend-iops-val"),
+
+            // Overview Stat Cards
+            storageHugeVal: document.getElementById("storage-huge-val"),
+            storageSubtext: document.getElementById("storage-subtext"),
+            storageProgressBar: document.getElementById("storage-progress-bar"),
+            storageFreeText: document.getElementById("storage-free-text"),
+            storagePill: document.getElementById("storage-pill"),
+
+            ioReadVal: document.getElementById("io-read-val"),
+            ioWriteVal: document.getElementById("io-write-val"),
+            ioIopsVal: document.getElementById("io-iops-val"),
+            ioDisksText: document.getElementById("io-disks-text"),
+
             cpuHugeVal: document.getElementById("cpu-huge-val"),
             cpuSubtext: document.getElementById("cpu-subtext"),
             cpuProgressBar: document.getElementById("cpu-progress-bar"),
@@ -53,32 +78,15 @@
             ramAvailText: document.getElementById("ram-avail-text"),
             ramPill: document.getElementById("ram-pill"),
 
-            storageHugeVal: document.getElementById("storage-huge-val"),
-            storageSubtext: document.getElementById("storage-subtext"),
-            storageProgressBar: document.getElementById("storage-progress-bar"),
-            storageFreeText: document.getElementById("storage-free-text"),
-            storagePill: document.getElementById("storage-pill"),
-
-            ioReadVal: document.getElementById("io-read-val"),
-            ioWriteVal: document.getElementById("io-write-val"),
-            ioIopsVal: document.getElementById("io-iops-val"),
-            ioDisksText: document.getElementById("io-disks-text"),
-
-            // SVG Charts
-            cpuChartSvg: document.getElementById("cpu-chart-svg"),
-            ramChartSvg: document.getElementById("ram-chart-svg"),
-            ioChartSvg: document.getElementById("io-chart-svg"),
-            cpuChartCurrent: document.getElementById("cpu-chart-current"),
-            ramChartCurrent: document.getElementById("ram-chart-current"),
-            ioChartCurrent: document.getElementById("io-chart-current"),
-
-            // Storage Section
+            // Disks Section
             storageSearchInput: document.getElementById("storage-search"),
+            disksTableBody: document.getElementById("disks-table-body"),
+            disksCountBadge: document.getElementById("disks-count-badge"),
+
+            // Volumes Section
             tabStandardMounts: document.getElementById("tab-standard-mounts"),
             tabAllMounts: document.getElementById("tab-all-mounts"),
-            disksGrid: document.getElementById("disks-grid"),
             volumesTableBody: document.getElementById("volumes-table-body"),
-            disksCountBadge: document.getElementById("disks-count-badge"),
             volumesCountBadge: document.getElementById("volumes-count-badge"),
 
             // CPU Section
@@ -90,7 +98,6 @@
             specCpuFreq: document.getElementById("spec-cpu-freq"),
             specCpuLoad: document.getElementById("spec-cpu-load"),
             specCpuUptime: document.getElementById("spec-cpu-uptime"),
-            specCpuProcs: document.getElementById("spec-cpu-procs"),
 
             // RAM Section
             memBarUsed: document.getElementById("mem-bar-used"),
@@ -99,21 +106,18 @@
             memLegendUsedVal: document.getElementById("mem-legend-used-val"),
             memLegendCachedVal: document.getElementById("mem-legend-cached-val"),
             memLegendFreeVal: document.getElementById("mem-legend-free-val"),
-            swapBarFill: document.getElementById("swap-bar-fill"),
-            swapTextVal: document.getElementById("swap-text-val"),
-            swapTotalVal: document.getElementById("swap-total-val"),
-            swapUsedVal: document.getElementById("swap-used-val"),
-            swapFreeVal: document.getElementById("swap-free-val"),
             ramTotalVal: document.getElementById("ram-total-val"),
-            ramUsedVal: document.getElementById("ram-used-val"),
             ramAvailableVal: document.getElementById("ram-available-val"),
             ramBuffersVal: document.getElementById("ram-buffers-val"),
             ramCachedVal: document.getElementById("ram-cached-val"),
-            ramActiveVal: document.getElementById("ram-active-val")
+            swapBarFill: document.getElementById("swap-bar-fill"),
+            swapTextVal: document.getElementById("swap-text-val"),
+            swapUsedVal: document.getElementById("swap-used-val"),
+            swapTotalVal: document.getElementById("swap-total-val")
         };
     }
 
-    // Helper: Format Bytes into human readable strings (KB, MB, GB, TB)
+    // Byte Formatting Helper
     function formatBytes(bytes, decimals = 1) {
         if (bytes === 0 || !bytes || isNaN(bytes)) return "0 B";
         const k = 1024;
@@ -124,7 +128,7 @@
         return parseFloat((bytes / Math.pow(k, index)).toFixed(dm)) + " " + sizes[index];
     }
 
-    // Helper: Format I/O Rate (Bytes/sec into KB/s, MB/s, etc.)
+    // Rate Formatting Helper
     function formatRate(bytesPerSec) {
         if (bytesPerSec === 0 || !bytesPerSec || isNaN(bytesPerSec)) return "0 KB/s";
         if (bytesPerSec < 1024) return bytesPerSec.toFixed(0) + " B/s";
@@ -133,7 +137,7 @@
         return (bytesPerSec / (1024 * 1024 * 1024)).toFixed(2) + " GB/s";
     }
 
-    // Helper: Format Uptime Seconds
+    // Uptime Formatting Helper
     function formatUptime(seconds) {
         const d = Math.floor(seconds / 86400);
         const h = Math.floor((seconds % 86400) / 3600);
@@ -147,17 +151,23 @@
         return parts.join(" ");
     }
 
-    // Helper: Color threshold class based on percentage
-    function getThresholdClass(pct) {
-        if (pct >= 90) return "danger";
-        if (pct >= 75) return "warning";
-        return "normal";
+    // PatternFly Status Labels and Classes
+    function getPfThresholdClass(pct) {
+        if (pct >= 90) return "pf-m-red";
+        if (pct >= 75) return "pf-m-gold";
+        return "pf-m-green";
     }
 
-    function getProgressClass(pct) {
-        if (pct >= 90) return "danger";
-        if (pct >= 75) return "warning";
-        return "success";
+    function getPfIndicatorClass(pct) {
+        if (pct >= 90) return "red";
+        if (pct >= 75) return "orange";
+        return "green";
+    }
+
+    function getThresholdLabel(pct) {
+        if (pct >= 90) return "Critical";
+        if (pct >= 75) return "Warning";
+        return "Normal";
     }
 
     // Theme Management
@@ -172,11 +182,10 @@
         } else {
             document.body.classList.remove("theme-light");
         }
-        renderCharts();
+        renderPlot();
     }
 
-    // High performance Metric Collector Query
-    // Runs collector.sh or inline POSIX commands fallback
+    // Data Collector Query
     async function collectSystemTelemetry() {
         if (!window.cockpit) {
             return generateMockTelemetry();
@@ -209,18 +218,18 @@
             const output = await window.cockpit.spawn(["bash", "-c", scriptCommand], { err: "out" });
             return parseTelemetryOutput(output);
         } catch (err) {
-            console.error("Cockpit spawn error, attempting fallback to collector.sh:", err);
+            console.error("Cockpit spawn error, retrying fallback:", err);
             try {
                 const altOutput = await window.cockpit.spawn(["/bin/sh", "-c", scriptCommand], { err: "out" });
                 return parseTelemetryOutput(altOutput);
             } catch (fallbackErr) {
-                console.error("Critical: Failed to read telemetry:", fallbackErr);
+                console.error("Critical: Telemetry query failed:", fallbackErr);
                 throw fallbackErr;
             }
         }
     }
 
-    // Telemetry Output Parser
+    // Output Parser
     function parseTelemetryOutput(raw) {
         const sections = {};
         const parts = raw.split(/^===([A-Z]+)===$/m);
@@ -234,19 +243,12 @@
         const deltaSec = state.lastTimestamp ? Math.max(0.1, (now - state.lastTimestamp) / 1000) : 2.0;
         state.lastTimestamp = now;
 
-        // 1. CPU Parsing
         const cpuData = parseCpuSection(sections.STAT, deltaSec);
         const uptimeData = parseUptime(sections.UPTIME);
         const loadAvgData = parseLoadAvg(sections.LOADAVG);
         const cpuSpecs = parseCpuInfo(sections.CPUINFO);
-
-        // 2. Memory Parsing
         const memData = parseMemInfo(sections.MEMINFO);
-
-        // 3. Disk Stats & I/O
         const diskIoData = parseDiskStats(sections.DISKSTATS, deltaSec);
-
-        // 4. Disks & Volumes Hierarchy
         const storageData = parseStorage(sections.LSBLK, sections.DF, diskIoData.disks);
 
         return {
@@ -276,10 +278,7 @@
                 overall = parseStatLine(parts);
             } else if (parts[0].startsWith("cpu") && parts[0].length > 3) {
                 const coreIdx = parseInt(parts[0].substring(3), 10);
-                cores.push({
-                    index: coreIdx,
-                    stat: parseStatLine(parts)
-                });
+                cores.push({ index: coreIdx, stat: parseStatLine(parts) });
             }
         }
 
@@ -303,27 +302,19 @@
                     coreUsage = Math.max(0, Math.min(100, (busyDelta / totalDelta) * 100));
                 }
             }
-            coreResults.push({
-                index: c.index,
-                usage: coreUsage
-            });
+            coreResults.push({ index: c.index, usage: coreUsage });
         }
 
-        // Update previous snapshot
         state.prevCpuStat = {
             total: overall ? overall.total : 0,
             busy: overall ? overall.busy : 0,
             cores: cores.map(c => c.stat)
         };
 
-        return {
-            totalUsage: totalUsage,
-            cores: coreResults
-        };
+        return { totalUsage, cores: coreResults };
     }
 
     function parseStatLine(parts) {
-        // parts: [name, user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice]
         const nums = parts.slice(1).map(x => parseInt(x, 10) || 0);
         const user = nums[0] || 0;
         const nice = nums[1] || 0;
@@ -333,11 +324,9 @@
         const irq = nums[5] || 0;
         const softirq = nums[6] || 0;
         const steal = nums[7] || 0;
-
         const idleAll = idle + iowait;
         const busy = user + nice + system + irq + softirq + steal;
         const total = idleAll + busy;
-
         return { total, busy, idle: idleAll };
     }
 
@@ -345,10 +334,7 @@
     function parseUptime(raw) {
         if (!raw) return { seconds: 0, text: "0s" };
         const sec = parseFloat(raw.trim().split(/\s+/)[0]) || 0;
-        return {
-            seconds: sec,
-            text: formatUptime(sec)
-        };
+        return { seconds: sec, text: formatUptime(sec) };
     }
 
     // Parse /proc/loadavg
@@ -363,7 +349,7 @@
         };
     }
 
-    // Parse lscpu / cpuinfo
+    // Parse lscpu
     function parseCpuInfo(raw) {
         if (!raw) return state.specs || { model: "Standard Processor", arch: "x86_64", cores: 4, freq: "N/A" };
         let model = "";
@@ -377,7 +363,6 @@
             if (!k || rest.length === 0) continue;
             const key = k.trim().toLowerCase();
             const val = rest.join(":").trim();
-
             if (key === "model name" && !model) model = val;
             if (key === "architecture" && !arch) arch = val;
             if (key === "cpu(s)" && !cores) cores = parseInt(val, 10);
@@ -401,13 +386,13 @@
 
     // Parse /proc/meminfo
     function parseMemInfo(raw) {
-        if (!raw) return { total: 0, used: 0, free: 0, available: 0, cached: 0, buffers: 0, usedPct: 0, swapTotal: 0, swapUsed: 0, swapFree: 0, swapPct: 0 };
+        if (!raw) return { total: 0, used: 0, free: 0, available: 0, cached: 0, buffers: 0, usedPct: 0, swapTotal: 0, swapUsed: 0, swapPct: 0 };
         const mem = {};
         const lines = raw.split("\n");
         for (const line of lines) {
             const [k, v] = line.split(":");
             if (k && v) {
-                mem[k.trim()] = parseInt(v.trim().split(/\s+/)[0], 10) * 1024; // Convert kB to Bytes
+                mem[k.trim()] = parseInt(v.trim().split(/\s+/)[0], 10) * 1024;
             }
         }
 
@@ -417,7 +402,6 @@
         const used = Math.max(0, total - available);
         const buffers = mem.Buffers || 0;
         const cached = mem.Cached || 0;
-        const active = mem.Active || 0;
 
         const swapTotal = mem.SwapTotal || 0;
         const swapFree = mem.SwapFree || 0;
@@ -431,7 +415,6 @@
             available,
             buffers,
             cached,
-            active,
             usedPct: (used / total) * 100,
             swapTotal,
             swapUsed,
@@ -454,7 +437,6 @@
             const p = line.trim().split(/\s+/);
             if (p.length < 14) continue;
             const devName = p[2];
-            // Filter loop and ram devices
             if (devName.startsWith("loop") || devName.startsWith("ram")) continue;
 
             const reads = parseInt(p[3], 10) || 0;
@@ -477,7 +459,6 @@
                 writeRate = (deltaWriteSectors * 512) / deltaSec;
                 iops = (deltaReads + deltaWrites) / deltaSec;
 
-                // Aggregate major whole disks (e.g. sda, nvme0n1, vda, not partitions)
                 if (!devName.match(/\d+$/) || devName.startsWith("nvme") && devName.endsWith("n1")) {
                     totalReadBytesSec += readRate;
                     totalWriteBytesSec += writeRate;
@@ -485,27 +466,11 @@
                 }
             }
 
-            state.prevDiskStats.set(devName, {
-                reads,
-                sectorsRead,
-                writes,
-                sectorsWritten
-            });
-
-            disks.set(devName, {
-                devName,
-                readRate,
-                writeRate,
-                iops
-            });
+            state.prevDiskStats.set(devName, { reads, sectorsRead, writes, sectorsWritten });
+            disks.set(devName, { devName, readRate, writeRate, iops });
         }
 
-        return {
-            totalReadBytesSec,
-            totalWriteBytesSec,
-            totalIops,
-            disks
-        };
+        return { totalReadBytesSec, totalWriteBytesSec, totalIops, disks };
     }
 
     // Parse lsblk and df
@@ -515,10 +480,9 @@
             const parsed = JSON.parse(lsblkRaw || '{"blockdevices":[]}');
             blockDevices = parsed.blockdevices || [];
         } catch (e) {
-            console.warn("Failed to parse lsblk JSON:", e);
+            console.warn("Error parsing lsblk:", e);
         }
 
-        // Parse DF output
         const mountsMap = new Map();
         let totalStorageCap = 0;
         let totalStorageUsed = 0;
@@ -526,7 +490,6 @@
 
         if (dfRaw) {
             const dfLines = dfRaw.trim().split("\n");
-            // Skip header
             for (let i = 1; i < dfLines.length; i++) {
                 const parts = dfLines[i].trim().split(/\s+/);
                 if (parts.length < 7) continue;
@@ -562,7 +525,6 @@
             }
         }
 
-        // Build Disks List
         const physicalDisks = [];
         for (const dev of blockDevices) {
             if (dev.type !== "disk") continue;
@@ -599,11 +561,10 @@
             physicalDisks.push({
                 name: dev.name,
                 path: dev.path || ("/dev/" + dev.name),
-                model: dev.model || "Generic Block Storage",
+                model: dev.model || "Block Device",
                 size: dev.size || 0,
                 transport: (dev.tran || "SATA").toUpperCase(),
                 techType: techType,
-                rota: dev.rota,
                 readRate: io.readRate,
                 writeRate: io.writeRate,
                 iops: io.iops,
@@ -624,13 +585,13 @@
         };
     }
 
-    // Mock Telemetry Generator for Standalone Preview Mode
+    // Mock Telemetry Generator
     function generateMockTelemetry() {
         const now = Date.now();
-        const baseCpu = 18 + Math.sin(now / 5000) * 12 + Math.random() * 5;
-        const baseRam = 45 + Math.cos(now / 8000) * 8;
-        const readRate = Math.max(0, 1024 * 1024 * (2.4 + Math.sin(now / 4000) * 2));
-        const writeRate = Math.max(0, 1024 * 512 * (1.8 + Math.cos(now / 3000) * 1.5));
+        const baseCpu = 15 + Math.sin(now / 4000) * 10 + Math.random() * 4;
+        const baseRam = 42 + Math.cos(now / 7000) * 6;
+        const readRate = Math.max(0, 1024 * 1024 * (3.2 + Math.sin(now / 3500) * 2.5));
+        const writeRate = Math.max(0, 1024 * 512 * (2.1 + Math.cos(now / 2500) * 1.8));
 
         const mockDisks = [
             {
@@ -642,7 +603,7 @@
                 techType: "nvme",
                 readRate: readRate * 0.7,
                 writeRate: writeRate * 0.7,
-                iops: 420 + Math.floor(Math.random() * 80),
+                iops: 420 + Math.floor(Math.random() * 90),
                 partitions: [
                     { name: "nvme0n1p1", path: "/dev/nvme0n1p1", size: 1073741824, mountpoint: "/boot/efi", fstype: "vfat", label: "EFI", usedBytes: 157286400, availBytes: 916455424, usedPct: 14.6 },
                     { name: "nvme0n1p2", path: "/dev/nvme0n1p2", size: 999131144192, mountpoint: "/", fstype: "ext4", label: "rootfs", usedBytes: 342583808000, availBytes: 656547336192, usedPct: 34.3 }
@@ -658,7 +619,7 @@
                 techType: "ssd",
                 readRate: readRate * 0.3,
                 writeRate: writeRate * 0.3,
-                iops: 120 + Math.floor(Math.random() * 40),
+                iops: 130 + Math.floor(Math.random() * 40),
                 partitions: [
                     { name: "sda1", path: "/dev/sda1", size: 2000398934016, mountpoint: "/mnt/data", fstype: "xfs", label: "data-store", usedBytes: 1120000000000, availBytes: 880398934016, usedPct: 56.0 }
                 ],
@@ -682,15 +643,15 @@
             cpu: {
                 totalUsage: baseCpu,
                 cores: [
-                    { index: 0, usage: Math.max(0, Math.min(100, baseCpu + Math.sin(now / 1000) * 15)) },
-                    { index: 1, usage: Math.max(0, Math.min(100, baseCpu + Math.cos(now / 1200) * 12)) },
-                    { index: 2, usage: Math.max(0, Math.min(100, baseCpu - Math.sin(now / 1500) * 10)) },
-                    { index: 3, usage: Math.max(0, Math.min(100, baseCpu - Math.cos(now / 1300) * 8)) }
+                    { index: 0, usage: Math.max(0, Math.min(100, baseCpu + Math.sin(now / 1000) * 12)) },
+                    { index: 1, usage: Math.max(0, Math.min(100, baseCpu + Math.cos(now / 1100) * 10)) },
+                    { index: 2, usage: Math.max(0, Math.min(100, baseCpu - Math.sin(now / 1200) * 8)) },
+                    { index: 3, usage: Math.max(0, Math.min(100, baseCpu - Math.cos(now / 1300) * 6)) }
                 ]
             },
-            uptime: { seconds: 124500, text: "1d 10h 35m" },
-            loadAvg: { load1: "0.45", load5: "0.52", load15: "0.48", procs: "3/385" },
-            cpuSpecs: { model: "AMD Ryzen 9 5950X / ARM Cortex-A72", arch: "x86_64 / aarch64", cores: 4, freq: "3400 MHz" },
+            uptime: { seconds: 128400, text: "1d 11h 40m" },
+            loadAvg: { load1: "0.38", load5: "0.45", load15: "0.42", procs: "2/390" },
+            cpuSpecs: { model: "AMD Ryzen 9 / ARM Cortex-A72", arch: "x86_64 / aarch64", cores: 4, freq: "3400 MHz" },
             memory: {
                 total: 34359738368,
                 used: (34359738368 * baseRam) / 100,
@@ -698,17 +659,15 @@
                 free: 8589934592,
                 buffers: 1073741824,
                 cached: 8589934592,
-                active: 17179869184,
                 usedPct: baseRam,
                 swapTotal: 17179869184,
                 swapUsed: 1073741824,
-                swapFree: 16106127360,
                 swapPct: 6.25
             },
             io: {
                 totalReadBytesSec: readRate,
                 totalWriteBytesSec: writeRate,
-                totalIops: 540 + Math.floor(Math.random() * 100),
+                totalIops: 550 + Math.floor(Math.random() * 80),
                 disks: new Map()
             },
             storage: {
@@ -726,12 +685,15 @@
     function updateDashboardUI(data) {
         if (!data) return;
 
-        // Push History for Charts
+        // Push History for Plots
         state.history.cpu.push(data.cpu.totalUsage);
         if (state.history.cpu.length > state.historyLength) state.history.cpu.shift();
 
         state.history.ram.push(data.memory.usedPct);
         if (state.history.ram.length > state.historyLength) state.history.ram.shift();
+
+        state.history.swap.push(data.memory.swapPct);
+        if (state.history.swap.length > state.historyLength) state.history.swap.shift();
 
         const readMB = data.io.totalReadBytesSec / (1024 * 1024);
         const writeMB = data.io.totalWriteBytesSec / (1024 * 1024);
@@ -740,94 +702,220 @@
         if (state.history.diskReadMB.length > state.historyLength) state.history.diskReadMB.shift();
         if (state.history.diskWriteMB.length > state.historyLength) state.history.diskWriteMB.shift();
 
-        // 1. Update CPU Overview Card
-        const cpuPct = data.cpu.totalUsage;
-        if (el.cpuHugeVal) el.cpuHugeVal.textContent = cpuPct.toFixed(1);
-        if (el.cpuProgressBar) {
-            el.cpuProgressBar.style.width = Math.min(100, Math.max(0, cpuPct)) + "%";
-            el.cpuProgressBar.className = "progress-fill " + getProgressClass(cpuPct);
-        }
-        if (el.cpuPill) {
-            el.cpuPill.textContent = getThresholdLabel(cpuPct);
-            el.cpuPill.className = "metric-pill " + getThresholdClass(cpuPct);
-        }
-        if (el.cpuSubtext) {
-            const coresCount = data.cpu.cores.length || data.cpuSpecs.cores || 4;
-            el.cpuSubtext.textContent = `${coresCount} Cores @ ${data.cpuSpecs.freq}`;
-        }
-        if (el.cpuLoadText) {
-            el.cpuLoadText.textContent = `Load: ${data.loadAvg.load1}, ${data.loadAvg.load5}, ${data.loadAvg.load15}`;
-        }
+        // 1. Update Top Plot Card
+        renderPlot(data);
 
-        // 2. Update RAM Overview Card
-        const memPct = data.memory.usedPct;
-        if (el.ramHugeVal) el.ramHugeVal.textContent = memPct.toFixed(1);
-        if (el.ramProgressBar) {
-            el.ramProgressBar.style.width = Math.min(100, Math.max(0, memPct)) + "%";
-            el.ramProgressBar.className = "progress-fill purple";
-        }
-        if (el.ramPill) {
-            el.ramPill.textContent = getThresholdLabel(memPct);
-            el.ramPill.className = "metric-pill " + getThresholdClass(memPct);
-        }
-        if (el.ramSubtext) {
-            el.ramSubtext.textContent = `${formatBytes(data.memory.used)} / ${formatBytes(data.memory.total)}`;
-        }
-        if (el.ramAvailText) {
-            el.ramAvailText.textContent = `Avail: ${formatBytes(data.memory.available)}`;
-        }
-
-        // 3. Update Storage Overview Card
+        // 2. Update Storage Stat Card
         const stPct = data.storage.globalUsagePct;
         if (el.storageHugeVal) el.storageHugeVal.textContent = stPct.toFixed(1);
         if (el.storageProgressBar) {
             el.storageProgressBar.style.width = Math.min(100, Math.max(0, stPct)) + "%";
-            el.storageProgressBar.className = "progress-fill " + getProgressClass(stPct);
+            el.storageProgressBar.className = "pf-v6-c-progress__indicator " + getPfIndicatorClass(stPct);
         }
         if (el.storagePill) {
             el.storagePill.textContent = getThresholdLabel(stPct);
-            el.storagePill.className = "metric-pill " + getThresholdClass(stPct);
+            el.storagePill.className = "pf-v6-c-label " + getPfThresholdClass(stPct);
         }
-        if (el.storageSubtext) {
-            el.storageSubtext.textContent = `${formatBytes(data.storage.totalUsed)} / ${formatBytes(data.storage.totalCapacity)}`;
-        }
-        if (el.storageFreeText) {
-            el.storageFreeText.textContent = `Free: ${formatBytes(data.storage.totalAvailable)}`;
-        }
+        if (el.storageSubtext) el.storageSubtext.textContent = `${formatBytes(data.storage.totalUsed)} / ${formatBytes(data.storage.totalCapacity)}`;
+        if (el.storageFreeText) el.storageFreeText.textContent = `Free: ${formatBytes(data.storage.totalAvailable)}`;
 
-        // 4. Update Disk I/O Card
+        // 3. Update Disk I/O Stat Card
         if (el.ioReadVal) el.ioReadVal.textContent = formatRate(data.io.totalReadBytesSec);
         if (el.ioWriteVal) el.ioWriteVal.textContent = formatRate(data.io.totalWriteBytesSec);
         if (el.ioIopsVal) el.ioIopsVal.textContent = Math.round(data.io.totalIops) + " IOPS";
         if (el.ioDisksText) {
-            const diskCount = data.storage.disks.length;
-            el.ioDisksText.textContent = `${diskCount} ${diskCount === 1 ? "Block Disk" : "Block Disks"}`;
+            const count = data.storage.disks.length;
+            el.ioDisksText.textContent = `${count} ${count === 1 ? "Disk" : "Disks"}`;
         }
 
-        // 5. Update Charts
-        renderCharts();
+        // 4. Update CPU Stat Card
+        const cpuPct = data.cpu.totalUsage;
+        if (el.cpuHugeVal) el.cpuHugeVal.textContent = cpuPct.toFixed(1);
+        if (el.cpuProgressBar) {
+            el.cpuProgressBar.style.width = Math.min(100, Math.max(0, cpuPct)) + "%";
+            el.cpuProgressBar.className = "pf-v6-c-progress__indicator " + getPfIndicatorClass(cpuPct);
+        }
+        if (el.cpuPill) {
+            el.cpuPill.textContent = getThresholdLabel(cpuPct);
+            el.cpuPill.className = "pf-v6-c-label " + getPfThresholdClass(cpuPct);
+        }
+        if (el.cpuSubtext) el.cpuSubtext.textContent = `${data.cpu.cores.length || data.cpuSpecs.cores} Cores @ ${data.cpuSpecs.freq}`;
+        if (el.cpuLoadText) el.cpuLoadText.textContent = `Load: ${data.loadAvg.load1}`;
 
-        // 6. Update Storage Section: Disks & Volumes
-        updateDisksGrid(data.storage.disks);
+        // 5. Update RAM Stat Card
+        const memPct = data.memory.usedPct;
+        if (el.ramHugeVal) el.ramHugeVal.textContent = memPct.toFixed(1);
+        if (el.ramProgressBar) {
+            el.ramProgressBar.style.width = Math.min(100, Math.max(0, memPct)) + "%";
+            el.ramProgressBar.className = "pf-v6-c-progress__indicator " + (memPct >= 90 ? "red" : (memPct >= 75 ? "orange" : "purple"));
+        }
+        if (el.ramPill) {
+            el.ramPill.textContent = getThresholdLabel(memPct);
+            el.ramPill.className = "pf-v6-c-label " + getPfThresholdClass(memPct);
+        }
+        if (el.ramSubtext) el.ramSubtext.textContent = `${formatBytes(data.memory.used)} / ${formatBytes(data.memory.total)}`;
+        if (el.ramAvailText) el.ramAvailText.textContent = `Avail: ${formatBytes(data.memory.available)}`;
+
+        // 6. Update Disks Table
+        updateDisksTable(data.storage.disks);
+
+        // 7. Update Volumes Table
         updateVolumesTable(data.storage.mounts);
 
-        // 7. Update CPU Details & Cores Grid
+        // 8. Update CPU Cores Grid & Specs
         updateCoresGrid(data.cpu.cores);
         updateCpuSpecs(data.cpuSpecs, data.loadAvg, data.uptime);
 
-        // 8. Update RAM Details & Memory Allocation Bar
+        // 9. Update Memory Distribution & Swap
         updateMemoryDetails(data.memory);
     }
 
-    function getThresholdLabel(pct) {
-        if (pct >= 90) return "Critical";
-        if (pct >= 75) return "Warning";
-        return "Normal";
+    // Top Plot Rendering (Cockpit ct-plot implementation)
+    function renderPlot(data) {
+        const svg = el.telemetryPlotSvg;
+        if (!svg) return;
+
+        const isLight = document.body.classList.contains("theme-light");
+        const gridColor = isLight ? "#d2d2d2" : "#36373a";
+        const width = svg.clientWidth || 800;
+        const height = svg.clientHeight || 160;
+        const padX = 50;
+        const padY = 16;
+        const plotW = width - padX - 16;
+        const plotH = height - padY * 2;
+
+        if (state.plotView === "io") {
+            // Update Legend
+            if (el.plotLegend) {
+                const curRead = state.history.diskReadMB.length ? state.history.diskReadMB[state.history.diskReadMB.length - 1] : 0;
+                const curWrite = state.history.diskWriteMB.length ? state.history.diskWriteMB[state.history.diskWriteMB.length - 1] : 0;
+                const curIops = data ? Math.round(data.io.totalIops) : 0;
+                el.plotLegend.innerHTML = `
+                    <div class="ct-legend-item">
+                        <span class="ct-legend-dot" style="background-color: var(--pf-t--chart--color--blue--300);"></span>
+                        <span>Read: <strong style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">${formatRate(curRead * 1024 * 1024)}</strong></span>
+                    </div>
+                    <div class="ct-legend-item">
+                        <span class="ct-legend-dot" style="background-color: var(--pf-t--chart--color--orange--300);"></span>
+                        <span>Write: <strong style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">${formatRate(curWrite * 1024 * 1024)}</strong></span>
+                    </div>
+                    <div class="ct-legend-item">
+                        <span style="color: var(--pf-t--global--text--color--muted);">&bull;</span>
+                        <span>IOPS: <strong style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">${curIops}</strong></span>
+                    </div>
+                `;
+            }
+
+            // Render Dual Rate Curves
+            let maxVal = 2.0;
+            state.history.diskReadMB.forEach(v => { if (v > maxVal) maxVal = v; });
+            state.history.diskWriteMB.forEach(v => { if (v > maxVal) maxVal = v; });
+            maxVal = Math.ceil(maxVal * 1.2 * 10) / 10;
+
+            renderDualSeries(svg, state.history.diskReadMB, state.history.diskWriteMB, maxVal, "MB/s", "#0066cc", "rgba(0, 102, 204, 0.2)", "#ec7a08", "rgba(236, 122, 8, 0.2)", width, height, padX, padY, plotW, plotH, gridColor);
+
+        } else if (state.plotView === "cpu") {
+            const curCpu = state.history.cpu.length ? state.history.cpu[state.history.cpu.length - 1] : 0;
+            if (el.plotLegend) {
+                el.plotLegend.innerHTML = `
+                    <div class="ct-legend-item">
+                        <span class="ct-legend-dot" style="background-color: var(--pf-t--chart--color--blue--300);"></span>
+                        <span>CPU Load: <strong style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">${curCpu.toFixed(1)}%</strong></span>
+                    </div>
+                `;
+            }
+            renderSingleSeries(svg, state.history.cpu, 100, "%", "#0066cc", "rgba(0, 102, 204, 0.25)", width, height, padX, padY, plotW, plotH, gridColor);
+
+        } else if (state.plotView === "ram") {
+            const curRam = state.history.ram.length ? state.history.ram[state.history.ram.length - 1] : 0;
+            const curSwap = state.history.swap.length ? state.history.swap[state.history.swap.length - 1] : 0;
+            if (el.plotLegend) {
+                el.plotLegend.innerHTML = `
+                    <div class="ct-legend-item">
+                        <span class="ct-legend-dot" style="background-color: #8b5cf6;"></span>
+                        <span>RAM: <strong style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">${curRam.toFixed(1)}%</strong></span>
+                    </div>
+                    <div class="ct-legend-item">
+                        <span class="ct-legend-dot" style="background-color: #009596;"></span>
+                        <span>Swap: <strong style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">${curSwap.toFixed(1)}%</strong></span>
+                    </div>
+                `;
+            }
+            renderDualSeries(svg, state.history.ram, state.history.swap, 100, "%", "#8b5cf6", "rgba(139, 92, 246, 0.2)", "#009596", "rgba(0, 149, 150, 0.2)", width, height, padX, padY, plotW, plotH, gridColor);
+        }
     }
 
-    // Render Disks Cards
-    function updateDisksGrid(disks) {
-        if (!el.disksGrid) return;
+    function renderSingleSeries(svg, series, maxVal, unit, strokeColor, fillColor, width, height, padX, padY, plotW, plotH, gridColor) {
+        if (!series || series.length === 0) {
+            svg.innerHTML = `<text x="${width/2}" y="${height/2}" fill="gray" text-anchor="middle">Collecting data...</text>`;
+            return;
+        }
+
+        const maxPoints = state.historyLength;
+        const stepX = plotW / (maxPoints - 1);
+        const points = series.map((val, i) => {
+            const x = padX + (maxPoints - series.length + i) * stepX;
+            const y = padY + plotH - (Math.max(0, Math.min(maxVal, val)) / maxVal) * plotH;
+            return { x, y };
+        });
+
+        let linePath = `M ${points[0].x} ${points[0].y}`;
+        for (let i = 1; i < points.length; i++) linePath += ` L ${points[i].x} ${points[i].y}`;
+        const areaPath = `${linePath} L ${points[points.length - 1].x} ${padY + plotH} L ${points[0].x} ${padY + plotH} Z`;
+
+        svg.innerHTML = `
+            <line class="ct-plot-lines" x1="${padX}" y1="${padY}" x2="${width - 16}" y2="${padY}" stroke="${gridColor}" />
+            <line class="ct-plot-lines" x1="${padX}" y1="${padY + plotH * 0.5}" x2="${width - 16}" y2="${padY + plotH * 0.5}" stroke="${gridColor}" />
+            <line class="ct-plot-lines" x1="${padX}" y1="${padY + plotH}" x2="${width - 16}" y2="${padY + plotH}" stroke="${gridColor}" />
+
+            <text class="ct-plot-axis" x="${padX - 8}" y="${padY + 4}" text-anchor="end">${maxVal}${unit}</text>
+            <text class="ct-plot-axis" x="${padX - 8}" y="${padY + plotH * 0.5 + 4}" text-anchor="end">${Math.round(maxVal / 2)}${unit}</text>
+            <text class="ct-plot-axis" x="${padX - 8}" y="${padY + plotH + 4}" text-anchor="end">0${unit}</text>
+
+            <path d="${areaPath}" fill="${fillColor}" />
+            <path d="${linePath}" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" />
+            <circle cx="${points[points.length - 1].x}" cy="${points[points.length - 1].y}" r="3" fill="${strokeColor}" />
+        `;
+    }
+
+    function renderDualSeries(svg, s1, s2, maxVal, unit, c1, a1, c2, a2, width, height, padX, padY, plotW, plotH, gridColor) {
+        const maxPoints = state.historyLength;
+        const stepX = plotW / (maxPoints - 1);
+
+        function toPoints(series) {
+            return series.map((val, i) => {
+                const x = padX + (maxPoints - series.length + i) * stepX;
+                const y = padY + plotH - (Math.max(0, Math.min(maxVal, val)) / maxVal) * plotH;
+                return { x, y };
+            });
+        }
+
+        const pts1 = toPoints(s1);
+        const pts2 = toPoints(s2);
+
+        let path1 = pts1.length ? `M ${pts1[0].x} ${pts1[0].y}` : "";
+        for (let i = 1; i < pts1.length; i++) path1 += ` L ${pts1[i].x} ${pts1[i].y}`;
+
+        let path2 = pts2.length ? `M ${pts2[0].x} ${pts2[0].y}` : "";
+        for (let i = 1; i < pts2.length; i++) path2 += ` L ${pts2[i].x} ${pts2[i].y}`;
+
+        svg.innerHTML = `
+            <line class="ct-plot-lines" x1="${padX}" y1="${padY}" x2="${width - 16}" y2="${padY}" stroke="${gridColor}" />
+            <line class="ct-plot-lines" x1="${padX}" y1="${padY + plotH * 0.5}" x2="${width - 16}" y2="${padY + plotH * 0.5}" stroke="${gridColor}" />
+            <line class="ct-plot-lines" x1="${padX}" y1="${padY + plotH}" x2="${width - 16}" y2="${padY + plotH}" stroke="${gridColor}" />
+
+            <text class="ct-plot-axis" x="${padX - 8}" y="${padY + 4}" text-anchor="end">${maxVal}${unit}</text>
+            <text class="ct-plot-axis" x="${padX - 8}" y="${padY + plotH * 0.5 + 4}" text-anchor="end">${(maxVal / 2).toFixed(1)}${unit}</text>
+            <text class="ct-plot-axis" x="${padX - 8}" y="${padY + plotH + 4}" text-anchor="end">0${unit}</text>
+
+            ${path1 ? `<path d="${path1}" fill="none" stroke="${c1}" stroke-width="2" stroke-linecap="round" />` : ""}
+            ${path2 ? `<path d="${path2}" fill="none" stroke="${c2}" stroke-width="2" stroke-linecap="round" />` : ""}
+        `;
+    }
+
+    // Render Disks Table (Matching Networking Interfaces Table)
+    function updateDisksTable(disks) {
+        if (!el.disksTableBody) return;
         if (el.disksCountBadge) el.disksCountBadge.textContent = disks.length;
 
         const query = state.filterText.toLowerCase();
@@ -840,112 +928,127 @@
         });
 
         if (filtered.length === 0) {
-            el.disksGrid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 24px;">No block disks match filter "${state.filterText}".</div>`;
+            el.disksTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--pf-t--global--text--color--muted); padding: 24px;">No block storage disks match filter.</td></tr>`;
             return;
         }
 
         let html = "";
         for (const disk of filtered) {
             const diskTotalSize = disk.size || 1;
-            const techLabel = disk.techType.toUpperCase();
+            const techPillClass = disk.techType === "nvme" ? "pf-m-purple" : (disk.techType === "ssd" ? "pf-m-blue" : "pf-m-gold");
+            const isExpanded = state.expandedDisks.has(disk.name);
 
-            // Build partition segments for visual partition bar
-            let segmentsHtml = "";
-            let partsListHtml = "";
-
+            // Build Partition Slices for allocation bar
+            let slicesHtml = "";
             if (disk.partitions.length === 0) {
-                segmentsHtml = `<div class="partition-segment" style="width: 100%; background: #3b82f6;">Whole Device (${formatBytes(disk.size)})</div>`;
-                partsListHtml = `<div class="partition-item"><span class="part-name">Entire block device</span><span class="part-mount">No partition table</span></div>`;
+                slicesHtml = `<div class="ct-partition-slice" style="width: 100%; background: #0066cc;">Whole (${formatBytes(disk.size)})</div>`;
             } else {
-                const colors = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899", "#06b6d4"];
+                const colors = ["#0066cc", "#3e8635", "#8b5cf6", "#ec7a08", "#009596", "#b2b0ea"];
                 disk.partitions.forEach((p, idx) => {
-                    const widthPct = Math.max(4, Math.min(100, (p.size / diskTotalSize) * 100));
+                    const widthPct = Math.max(5, Math.min(100, (p.size / diskTotalSize) * 100));
                     const color = colors[idx % colors.length];
-                    const label = `${p.name} (${formatBytes(p.size)})`;
-                    segmentsHtml += `
-                        <div class="partition-segment" style="width: ${widthPct}%; background-color: ${color};" title="${p.path} [${p.fstype}] ${p.mountpoint || 'Unmounted'} - ${formatBytes(p.size)}">
-                            ${label}
-                        </div>
-                    `;
-
-                    partsListHtml += `
-                        <div class="partition-item">
-                            <div class="part-name-mount">
-                                <span class="part-name">${p.name}</span>
-                                <span class="part-fs">${p.fstype || "raw"}</span>
-                                <span class="part-mount">${p.mountpoint ? p.mountpoint : '<span style="color: var(--text-muted); font-style: italic;">unmounted</span>'}</span>
-                            </div>
-                            <div class="part-usage-meta">
-                                ${p.mountpoint ? `<span style="font-family: monospace; font-weight: 600;">${p.usedPct.toFixed(1)}%</span>` : ""}
-                                <span style="color: var(--text-muted);">${formatBytes(p.size)}</span>
-                            </div>
+                    slicesHtml += `
+                        <div class="ct-partition-slice" style="width: ${widthPct}%; background-color: ${color};" title="${p.name} [${p.fstype}] ${p.mountpoint || 'unmounted'} - ${formatBytes(p.size)}">
+                            ${p.name}
                         </div>
                     `;
                 });
-
-                if (disk.unallocatedSize > 1024 * 1024 * 10) { // More than 10MB unallocated
-                    const unallocPct = Math.max(2, (disk.unallocatedSize / diskTotalSize) * 100);
-                    segmentsHtml += `
-                        <div class="partition-segment" style="width: ${unallocPct}%; background-color: #4b5563;" title="Free Unallocated: ${formatBytes(disk.unallocatedSize)}">
-                            Free (${formatBytes(disk.unallocatedSize)})
-                        </div>
-                    `;
-                }
             }
 
+            // Main Row
             html += `
-                <div class="disk-card">
-                    <div class="disk-card-header">
-                        <div class="disk-identity">
-                            <span class="disk-device-badge">${disk.name}</span>
-                            <div class="disk-name-model">
-                                <span class="disk-model-text">${disk.model}</span>
-                                <span class="disk-transport-text">${disk.path} &bull; ${disk.transport}</span>
-                            </div>
+                <tr style="cursor: pointer;" data-disk="${disk.name}" class="disk-row">
+                    <td>
+                        <div class="ct-device-cell">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--pf-t--global--text--color--brand);">
+                                <path d="M6 19v-3M10 19v-3M14 19v-3M18 19v-3M2 8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2Z"></path>
+                            </svg>
+                            <span>${disk.name}</span>
                         </div>
-                        <span class="disk-tech-pill ${disk.techType}">${techLabel}</span>
-                    </div>
-
-                    <div class="disk-stats-row">
-                        <div class="disk-stat-box">
-                            <span class="disk-stat-label">Capacity</span>
-                            <span class="disk-stat-val">${formatBytes(disk.size)}</span>
+                    </td>
+                    <td>
+                        <div><strong>${disk.model}</strong></div>
+                        <div class="ct-subtext">${disk.path} &bull; ${disk.transport}</div>
+                    </td>
+                    <td>
+                        <span class="pf-v6-c-label ${techPillClass}">${disk.techType.toUpperCase()}</span>
+                    </td>
+                    <td style="font-weight: 600; font-family: var(--pf-t--global--font--family--mono);">${formatBytes(disk.size)}</td>
+                    <td style="color: var(--pf-t--chart--color--blue--300); font-family: var(--pf-t--global--font--family--mono); font-weight: 600;">${formatRate(disk.readRate)}</td>
+                    <td style="color: var(--pf-t--chart--color--orange--300); font-family: var(--pf-t--global--font--family--mono); font-weight: 600;">${formatRate(disk.writeRate)}</td>
+                    <td style="font-family: var(--pf-t--global--font--family--mono);">${Math.round(disk.iops)} IOPS</td>
+                    <td>
+                        <div class="ct-partition-bar-wrapper">
+                            ${slicesHtml}
                         </div>
-                        <div class="disk-stat-box">
-                            <span class="disk-stat-label">Read Rate</span>
-                            <span class="disk-stat-val" style="color: var(--color-success);">${formatRate(disk.readRate)}</span>
-                        </div>
-                        <div class="disk-stat-box">
-                            <span class="disk-stat-label">Write Rate</span>
-                            <span class="disk-stat-val" style="color: var(--color-warning);">${formatRate(disk.writeRate)}</span>
-                        </div>
-                        <div class="disk-stat-box">
-                            <span class="disk-stat-label">Throughput</span>
-                            <span class="disk-stat-val">${Math.round(disk.iops)} IOPS</span>
-                        </div>
-                    </div>
-
-                    <div class="partition-map-container">
-                        <div class="partition-map-label">
-                            <span>Partition Allocation</span>
-                            <span>${disk.partitions.length} ${disk.partitions.length === 1 ? "Partition" : "Partitions"}</span>
-                        </div>
-                        <div class="partition-track">
-                            ${segmentsHtml}
-                        </div>
-                    </div>
-
-                    <div class="disk-partitions-list">
-                        ${partsListHtml}
-                    </div>
-                </div>
+                    </td>
+                </tr>
             `;
+
+            // Expandable Row with Partitions Sub-Table
+            if (isExpanded) {
+                let partsRows = "";
+                if (disk.partitions.length === 0) {
+                    partsRows = `<tr><td colspan="6" style="color: var(--pf-t--global--text--color--muted);">No partitions defined on this disk.</td></tr>`;
+                } else {
+                    disk.partitions.forEach(p => {
+                        partsRows += `
+                            <tr>
+                                <td style="font-family: var(--pf-t--global--font--family--mono); font-weight: 600;">${p.name}</td>
+                                <td>${p.mountpoint ? `<span style="color: var(--pf-t--global--text--color--brand); font-weight: 600;">${p.mountpoint}</span>` : '<span style="color: var(--pf-t--global--text--color--muted); font-style: italic;">unmounted</span>'}</td>
+                                <td><span class="pf-v6-c-badge">${p.fstype || "raw"}</span></td>
+                                <td>${formatBytes(p.size)}</td>
+                                <td>${p.mountpoint ? formatBytes(p.usedBytes) + " (" + p.usedPct.toFixed(1) + "%)" : "-"}</td>
+                                <td style="font-family: var(--pf-t--global--font--family--mono); font-size: 0.72rem; color: var(--pf-t--global--text--color--muted);">${p.uuid || "-"}</td>
+                            </tr>
+                        `;
+                    });
+                }
+
+                html += `
+                    <tr class="ct-expand-row">
+                        <td colspan="8">
+                            <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--pf-t--global--text--color--muted); margin-bottom: 8px;">
+                                Partitions on ${disk.name}
+                            </div>
+                            <table class="ct-partitions-subtable">
+                                <thead>
+                                    <tr>
+                                        <th>Partition</th>
+                                        <th>Mount</th>
+                                        <th>Type</th>
+                                        <th>Size</th>
+                                        <th>Used</th>
+                                        <th>UUID</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${partsRows}
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                `;
+            }
         }
 
-        el.disksGrid.innerHTML = html;
+        el.disksTableBody.innerHTML = html;
+
+        // Attach click to toggle expansion
+        el.disksTableBody.querySelectorAll(".disk-row").forEach(row => {
+            row.addEventListener("click", () => {
+                const diskName = row.getAttribute("data-disk");
+                if (state.expandedDisks.has(diskName)) {
+                    state.expandedDisks.delete(diskName);
+                } else {
+                    state.expandedDisks.add(diskName);
+                }
+                tick();
+            });
+        });
     }
 
-    // Render Volumes & Mounts Table
+    // Render Volumes Table
     function updateVolumesTable(mounts) {
         if (!el.volumesTableBody) return;
 
@@ -961,42 +1064,42 @@
         if (el.volumesCountBadge) el.volumesCountBadge.textContent = filtered.length;
 
         if (filtered.length === 0) {
-            el.volumesTableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">No mounted volumes found matching criteria.</td></tr>`;
+            el.volumesTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--pf-t--global--text--color--muted); padding: 24px;">No mounted volumes found matching criteria.</td></tr>`;
             return;
         }
 
         let html = "";
         for (const vol of filtered) {
             const pct = vol.usedPct;
-            const barClass = getProgressClass(pct);
-            const statusLabel = pct >= 90 ? "Critical" : (pct >= 75 ? "Warning" : "Healthy");
-            const statusClass = pct >= 90 ? "danger" : (pct >= 75 ? "warning" : "normal");
+            const statusLabel = getThresholdLabel(pct);
+            const statusClass = getPfThresholdClass(pct);
+            const barClass = getPfIndicatorClass(pct);
 
             html += `
                 <tr>
-                    <td>
-                        <div class="mount-path">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <td style="font-weight: 600; color: var(--pf-t--global--text--color--brand);">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                             </svg>
                             <span>${vol.mountpoint}</span>
                         </div>
                     </td>
-                    <td><span class="device-source">${vol.source}</span></td>
-                    <td><span class="fstype-badge">${vol.fsType}</span></td>
-                    <td style="font-weight: 600;">${formatBytes(vol.totalBytes)}</td>
-                    <td style="color: var(--text-secondary);">${formatBytes(vol.usedBytes)}</td>
-                    <td style="color: var(--text-secondary);">${formatBytes(vol.availBytes)}</td>
-                    <td>
-                        <div class="volume-progress-cell">
-                            <div class="progress-track">
-                                <div class="progress-fill ${barClass}" style="width: ${Math.min(100, Math.max(0, pct))}%;"></div>
+                    <td style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--secondary);">${vol.source}</td>
+                    <td><span class="pf-v6-c-badge">${vol.fsType}</span></td>
+                    <td style="font-weight: 600; font-family: var(--pf-t--global--font--family--mono);">${formatBytes(vol.totalBytes)}</td>
+                    <td style="color: var(--pf-t--global--text--color--secondary); font-family: var(--pf-t--global--font--family--mono);">${formatBytes(vol.usedBytes)}</td>
+                    <td style="color: var(--pf-t--global--text--color--secondary); font-family: var(--pf-t--global--font--family--mono);">${formatBytes(vol.availBytes)}</td>
+                    <td style="min-width: 140px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div class="pf-v6-c-progress__bar" style="flex: 1;">
+                                <div class="pf-v6-c-progress__indicator ${barClass}" style="width: ${Math.min(100, Math.max(0, pct))}%;"></div>
                             </div>
-                            <span class="percent-text">${pct.toFixed(1)}%</span>
+                            <span style="font-family: var(--pf-t--global--font--family--mono); font-size: 0.78rem; font-weight: 700;">${pct.toFixed(1)}%</span>
                         </div>
                     </td>
                     <td>
-                        <span class="metric-pill ${statusClass}">${statusLabel}</span>
+                        <span class="pf-v6-c-label ${statusClass}">${statusLabel}</span>
                     </td>
                 </tr>
             `;
@@ -1008,20 +1111,20 @@
     // Render CPU Cores Grid
     function updateCoresGrid(cores) {
         if (!el.coresGrid) return;
-        if (el.coresCountBadge) el.coresCountBadge.textContent = cores.length;
+        if (el.coresCountBadge) el.coresCountBadge.textContent = `${cores.length} Cores`;
 
         let html = "";
         for (const c of cores) {
             const usage = c.usage;
-            const barClass = getProgressClass(usage);
+            const barClass = getPfIndicatorClass(usage);
             html += `
-                <div class="core-card">
-                    <div class="core-header">
-                        <span class="core-label">Core ${c.index}</span>
-                        <span class="core-percent">${usage.toFixed(1)}%</span>
+                <div class="ct-core-card">
+                    <div class="ct-core-header">
+                        <span class="ct-core-label">Core ${c.index}</span>
+                        <span class="ct-core-val">${usage.toFixed(1)}%</span>
                     </div>
-                    <div class="progress-track">
-                        <div class="progress-fill ${barClass}" style="width: ${Math.min(100, Math.max(0, usage))}%;"></div>
+                    <div class="pf-v6-c-progress__bar">
+                        <div class="pf-v6-c-progress__indicator ${barClass}" style="width: ${Math.min(100, Math.max(0, usage))}%;"></div>
                     </div>
                 </div>
             `;
@@ -1029,7 +1132,7 @@
         el.coresGrid.innerHTML = html;
     }
 
-    // Update CPU Hardware Specs
+    // Update Hardware Specs
     function updateCpuSpecs(specs, loadAvg, uptime) {
         if (el.specCpuModel) el.specCpuModel.textContent = specs.model;
         if (el.specCpuArch) el.specCpuArch.textContent = specs.arch;
@@ -1037,10 +1140,9 @@
         if (el.specCpuFreq) el.specCpuFreq.textContent = specs.freq;
         if (el.specCpuLoad) el.specCpuLoad.textContent = `${loadAvg.load1} (1m), ${loadAvg.load5} (5m), ${loadAvg.load15} (15m)`;
         if (el.specCpuUptime) el.specCpuUptime.textContent = uptime.text;
-        if (el.specCpuProcs) el.specCpuProcs.textContent = loadAvg.procs;
     }
 
-    // Update Memory Allocation & Swap
+    // Update Memory Allocation Details
     function updateMemoryDetails(mem) {
         const total = mem.total || 1;
         const usedPct = (mem.used / total) * 100;
@@ -1056,191 +1158,22 @@
         if (el.memLegendFreeVal) el.memLegendFreeVal.textContent = `${formatBytes(mem.free)} (${freePct.toFixed(1)}%)`;
 
         if (el.ramTotalVal) el.ramTotalVal.textContent = formatBytes(mem.total);
-        if (el.ramUsedVal) el.ramUsedVal.textContent = formatBytes(mem.used);
         if (el.ramAvailableVal) el.ramAvailableVal.textContent = formatBytes(mem.available);
         if (el.ramBuffersVal) el.ramBuffersVal.textContent = formatBytes(mem.buffers);
         if (el.ramCachedVal) el.ramCachedVal.textContent = formatBytes(mem.cached);
-        if (el.ramActiveVal) el.ramActiveVal.textContent = formatBytes(mem.active);
 
         // Swap
         const swapPct = mem.swapPct;
         if (el.swapBarFill) {
             el.swapBarFill.style.width = Math.min(100, Math.max(0, swapPct)) + "%";
-            el.swapBarFill.className = "progress-fill " + (swapPct > 50 ? "warning" : "purple");
+            el.swapBarFill.className = "pf-v6-c-progress__indicator " + (swapPct > 50 ? "orange" : "purple");
         }
         if (el.swapTextVal) el.swapTextVal.textContent = swapPct.toFixed(1) + "%";
         if (el.swapTotalVal) el.swapTotalVal.textContent = formatBytes(mem.swapTotal);
         if (el.swapUsedVal) el.swapUsedVal.textContent = formatBytes(mem.swapUsed);
-        if (el.swapFreeVal) el.swapFreeVal.textContent = formatBytes(mem.swapFree);
     }
 
-    // High Performance SVG Charts Rendering
-    function renderCharts() {
-        const isLight = document.body.classList.contains("theme-light");
-        const gridColor = isLight ? "#e5e7eb" : "#2e3846";
-
-        // 1. CPU Chart
-        renderSingleSeriesChart(
-            el.cpuChartSvg,
-            state.history.cpu,
-            0,
-            100,
-            "#3b82f6",
-            "rgba(59, 130, 246, 0.25)",
-            gridColor,
-            "%"
-        );
-        if (el.cpuChartCurrent && state.history.cpu.length > 0) {
-            const val = state.history.cpu[state.history.cpu.length - 1];
-            el.cpuChartCurrent.textContent = val.toFixed(1) + "%";
-        }
-
-        // 2. RAM Chart
-        renderSingleSeriesChart(
-            el.ramChartSvg,
-            state.history.ram,
-            0,
-            100,
-            "#8b5cf6",
-            "rgba(139, 92, 246, 0.25)",
-            gridColor,
-            "%"
-        );
-        if (el.ramChartCurrent && state.history.ram.length > 0) {
-            const val = state.history.ram[state.history.ram.length - 1];
-            el.ramChartCurrent.textContent = val.toFixed(1) + "%";
-        }
-
-        // 3. Disk I/O Dual Series Chart (Read = Emerald Green, Write = Amber Orange)
-        renderDualSeriesChart(
-            el.ioChartSvg,
-            state.history.diskReadMB,
-            state.history.diskWriteMB,
-            "#10b981",
-            "#f59e0b",
-            gridColor
-        );
-        if (el.ioChartCurrent && state.history.diskReadMB.length > 0) {
-            const r = state.history.diskReadMB[state.history.diskReadMB.length - 1];
-            const w = state.history.diskWriteMB[state.history.diskWriteMB.length - 1];
-            el.ioChartCurrent.textContent = `R: ${r.toFixed(1)} MB/s | W: ${w.toFixed(1)} MB/s`;
-        }
-    }
-
-    function renderSingleSeriesChart(svg, series, minVal, maxVal, strokeColor, fillColor, gridColor, unit = "") {
-        if (!svg) return;
-        const width = svg.clientWidth || 320;
-        const height = svg.clientHeight || 120;
-        const padX = 35;
-        const padY = 15;
-        const plotW = width - padX - 10;
-        const plotH = height - padY * 2;
-
-        if (series.length === 0) {
-            svg.innerHTML = `<text x="${width / 2}" y="${height / 2}" fill="gray" text-anchor="middle" font-size="12">Collecting data...</text>`;
-            return;
-        }
-
-        const maxPoints = state.historyLength;
-        const stepX = plotW / (maxPoints - 1);
-
-        // Compute coordinates
-        let points = [];
-        series.forEach((val, i) => {
-            const x = padX + (maxPoints - series.length + i) * stepX;
-            const clamped = Math.max(minVal, Math.min(maxVal, val));
-            const y = padY + plotH - ((clamped - minVal) / (maxVal - minVal)) * plotH;
-            points.push({ x, y });
-        });
-
-        // SVG Path Construction
-        let linePath = `M ${points[0].x} ${points[0].y}`;
-        for (let i = 1; i < points.length; i++) {
-            linePath += ` L ${points[i].x} ${points[i].y}`;
-        }
-
-        const areaPath = `${linePath} L ${points[points.length - 1].x} ${padY + plotH} L ${points[0].x} ${padY + plotH} Z`;
-
-        // Horizontal Gridlines (0%, 50%, 100%)
-        const y0 = padY + plotH;
-        const y50 = padY + plotH * 0.5;
-        const y100 = padY;
-
-        svg.innerHTML = `
-            <line x1="${padX}" y1="${y100}" x2="${width - 10}" y2="${y100}" stroke="${gridColor}" stroke-dasharray="3 3" />
-            <line x1="${padX}" y1="${y50}" x2="${width - 10}" y2="${y50}" stroke="${gridColor}" stroke-dasharray="3 3" />
-            <line x1="${padX}" y1="${y0}" x2="${width - 10}" y2="${y0}" stroke="${gridColor}" />
-
-            <text x="${padX - 6}" y="${y100 + 3}" fill="var(--text-muted)" font-size="9" text-anchor="end">${maxVal}${unit}</text>
-            <text x="${padX - 6}" y="${y50 + 3}" fill="var(--text-muted)" font-size="9" text-anchor="end">${Math.round((maxVal + minVal) / 2)}${unit}</text>
-            <text x="${padX - 6}" y="${y0 + 3}" fill="var(--text-muted)" font-size="9" text-anchor="end">${minVal}${unit}</text>
-
-            <path d="${areaPath}" fill="${fillColor}" />
-            <path d="${linePath}" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-            <circle cx="${points[points.length - 1].x}" cy="${points[points.length - 1].y}" r="3.5" fill="${strokeColor}" />
-        `;
-    }
-
-    function renderDualSeriesChart(svg, readSeries, writeSeries, readColor, writeColor, gridColor) {
-        if (!svg) return;
-        const width = svg.clientWidth || 320;
-        const height = svg.clientHeight || 120;
-        const padX = 40;
-        const padY = 15;
-        const plotW = width - padX - 10;
-        const plotH = height - padY * 2;
-
-        if (readSeries.length === 0 && writeSeries.length === 0) {
-            svg.innerHTML = `<text x="${width / 2}" y="${height / 2}" fill="gray" text-anchor="middle" font-size="12">Collecting data...</text>`;
-            return;
-        }
-
-        // Auto-scale peak value with margin
-        let maxVal = 2.0; // minimum ceiling 2 MB/s
-        readSeries.forEach(v => { if (v > maxVal) maxVal = v; });
-        writeSeries.forEach(v => { if (v > maxVal) maxVal = v; });
-        maxVal = Math.ceil(maxVal * 1.25 * 10) / 10; // Round up cleanly
-
-        const maxPoints = state.historyLength;
-        const stepX = plotW / (maxPoints - 1);
-
-        function buildPoints(series) {
-            return series.map((val, i) => {
-                const x = padX + (maxPoints - series.length + i) * stepX;
-                const clamped = Math.max(0, Math.min(maxVal, val));
-                const y = padY + plotH - (clamped / maxVal) * plotH;
-                return { x, y };
-            });
-        }
-
-        const readPts = buildPoints(readSeries);
-        const writePts = buildPoints(writeSeries);
-
-        let readLine = readPts.length > 0 ? `M ${readPts[0].x} ${readPts[0].y}` : "";
-        for (let i = 1; i < readPts.length; i++) readLine += ` L ${readPts[i].x} ${readPts[i].y}`;
-
-        let writeLine = writePts.length > 0 ? `M ${writePts[0].x} ${writePts[0].y}` : "";
-        for (let i = 1; i < writePts.length; i++) writeLine += ` L ${writePts[i].x} ${writePts[i].y}`;
-
-        const y0 = padY + plotH;
-        const y50 = padY + plotH * 0.5;
-        const y100 = padY;
-
-        svg.innerHTML = `
-            <line x1="${padX}" y1="${y100}" x2="${width - 10}" y2="${y100}" stroke="${gridColor}" stroke-dasharray="3 3" />
-            <line x1="${padX}" y1="${y50}" x2="${width - 10}" y2="${y50}" stroke="${gridColor}" stroke-dasharray="3 3" />
-            <line x1="${padX}" y1="${y0}" x2="${width - 10}" y2="${y0}" stroke="${gridColor}" />
-
-            <text x="${padX - 6}" y="${y100 + 3}" fill="var(--text-muted)" font-size="9" text-anchor="end">${maxVal.toFixed(1)}M</text>
-            <text x="${padX - 6}" y="${y50 + 3}" fill="var(--text-muted)" font-size="9" text-anchor="end">${(maxVal / 2).toFixed(1)}M</text>
-            <text x="${padX - 6}" y="${y0 + 3}" fill="var(--text-muted)" font-size="9" text-anchor="end">0M</text>
-
-            ${readLine ? `<path d="${readLine}" fill="none" stroke="${readColor}" stroke-width="2" stroke-linecap="round" />` : ""}
-            ${writeLine ? `<path d="${writeLine}" fill="none" stroke="${writeColor}" stroke-width="2" stroke-linecap="round" />` : ""}
-        `;
-    }
-
-    // Main Telemetry Loop
+    // Telemetry Polling Tick
     async function tick() {
         if (state.isPaused) return;
 
@@ -1256,7 +1189,7 @@
 
     function setLiveStatus(status, label) {
         if (!el.statusPill) return;
-        el.statusPill.className = "status-pill " + (status === "paused" ? "paused" : (status === "error" ? "error" : ""));
+        el.statusPill.className = "pf-v6-c-label " + (status === "paused" ? "pf-m-gold" : (status === "error" ? "pf-m-red" : "pf-m-green"));
         if (el.statusText) el.statusText.textContent = label;
     }
 
@@ -1272,7 +1205,7 @@
 
     // Attach Event Listeners
     function setupEventListeners() {
-        // Polling interval change
+        // Interval change
         if (el.intervalSelect) {
             el.intervalSelect.value = state.intervalMs;
             el.intervalSelect.addEventListener("change", (e) => {
@@ -1282,7 +1215,7 @@
             });
         }
 
-        // Pause / Resume Button
+        // Pause/Resume button
         if (el.btnPause) {
             el.btnPause.addEventListener("click", () => {
                 state.isPaused = !state.isPaused;
@@ -1310,14 +1243,14 @@
             });
         }
 
-        // Refresh Now Button
+        // Refresh Now
         if (el.btnRefresh) {
             el.btnRefresh.addEventListener("click", () => {
                 tick();
             });
         }
 
-        // Theme Selector
+        // Theme Select
         if (el.themeSelect) {
             el.themeSelect.value = state.theme;
             el.themeSelect.addEventListener("change", (e) => {
@@ -1325,20 +1258,46 @@
             });
         }
 
-        // Listen for OS Theme Changes if theme is 'auto'
         if (window.matchMedia) {
             window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
-                if (state.theme === "auto") {
-                    applyTheme("auto");
-                }
+                if (state.theme === "auto") applyTheme("auto");
             });
         }
 
-        // Storage Search Filter
+        // Plot View Switcher Tabs
+        if (el.tabPlotIo) {
+            el.tabPlotIo.addEventListener("click", () => {
+                state.plotView = "io";
+                el.tabPlotIo.classList.add("active");
+                if (el.tabPlotCpu) el.tabPlotCpu.classList.remove("active");
+                if (el.tabPlotRam) el.tabPlotRam.classList.remove("active");
+                renderPlot();
+            });
+        }
+        if (el.tabPlotCpu) {
+            el.tabPlotCpu.addEventListener("click", () => {
+                state.plotView = "cpu";
+                el.tabPlotCpu.classList.add("active");
+                if (el.tabPlotIo) el.tabPlotIo.classList.remove("active");
+                if (el.tabPlotRam) el.tabPlotRam.classList.remove("active");
+                renderPlot();
+            });
+        }
+        if (el.tabPlotRam) {
+            el.tabPlotRam.addEventListener("click", () => {
+                state.plotView = "ram";
+                el.tabPlotRam.classList.add("active");
+                if (el.tabPlotIo) el.tabPlotIo.classList.remove("active");
+                if (el.tabPlotCpu) el.tabPlotCpu.classList.remove("active");
+                renderPlot();
+            });
+        }
+
+        // Search Filter
         if (el.storageSearchInput) {
             el.storageSearchInput.addEventListener("input", (e) => {
                 state.filterText = e.target.value;
-                tick(); // re-render with filter immediately
+                tick();
             });
         }
 
@@ -1361,11 +1320,11 @@
             });
         }
 
-        // Window resize to re-render charts accurately
+        // Window resize debounced re-plot
         let resizeDebounce = null;
         window.addEventListener("resize", () => {
             clearTimeout(resizeDebounce);
-            resizeDebounce = setTimeout(renderCharts, 100);
+            resizeDebounce = setTimeout(renderPlot, 100);
         });
     }
 
@@ -1379,14 +1338,10 @@
             if (el.demoBanner) el.demoBanner.classList.add("show");
         }
 
-        // First immediate sample
         tick();
-
-        // Start periodic loop
         restartTimer();
     });
 
-    // Cleanup on window unload
     window.addEventListener("beforeunload", () => {
         if (state.timerId) clearInterval(state.timerId);
     });
