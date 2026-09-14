@@ -1,0 +1,29 @@
+{
+    "version": 1,
+    "name": "dashboard",
+    "requires": {
+        "cockpit": "260"
+    },
+    "tools": {
+        "index": {
+            "label": "Dashboard",
+            "keywords": [
+                {
+                    "matches": ["dashboard", "system", "storage", "disk", "volume", "cpu", "ram", "memory", "realtime", "performance", "monitor"]
+                }
+            ]
+        }
+    },
+    "menu": {
+        "index": {
+            "label": "Dashboard",
+            "order": 15,
+            "keywords": [
+                {
+                    "matches": ["dashboard", "storage", "disk", "cpu", "ram", "metrics"]
+                }
+            ]
+        }
+    },
+    "content-security-policy": "default-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' wss: ws:; img-src 'self' data:"
+}

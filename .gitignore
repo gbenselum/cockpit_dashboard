@@ -1,0 +1,19 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Archives & Builds
+*.tar.gz
+*.zip
+cockpit-dashboard-*/
+
+# Node / Cache
+node_modules/
+.cache/
