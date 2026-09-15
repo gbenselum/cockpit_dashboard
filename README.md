@@ -48,7 +48,7 @@ Monitor **storage by physical disk and mounted volume**, **real-time disk I/O th
 Clone the repository and run the installer script:
 
 ```bash
-git clone https://github.com/gabriel/cockpit_dashboard.git
+git clone https://github.com/gbenselum/cockpit_dashboard.git
 cd cockpit_dashboard
 chmod +x install.sh
 ./install.sh
