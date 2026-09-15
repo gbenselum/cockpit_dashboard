@@ -15,13 +15,13 @@
         theme: localStorage.getItem("cockpit_dashboard_theme") || "auto",
         filterText: "",
         volumeFilter: "physical", // 'physical' or 'all'
-        plotView: "io",          // 'io', 'cpu', 'ram'
         expandedDisks: new Set(),
         lastTimestamp: null,
         prevCpuStat: null,
         prevDiskStats: new Map(),
         historyLength: 45,
         history: {
+            timestamps: [],
             cpu: [],
             ram: [],
             swap: [],
@@ -44,15 +44,19 @@
             themeSelect: document.getElementById("theme-select"),
             demoBanner: document.getElementById("demo-banner"),
 
-            // Top Plot Card
-            tabPlotIo: document.getElementById("tab-plot-io"),
-            tabPlotCpu: document.getElementById("tab-plot-cpu"),
-            tabPlotRam: document.getElementById("tab-plot-ram"),
-            plotLegend: document.getElementById("plot-legend"),
-            telemetryPlotSvg: document.getElementById("telemetry-plot-svg"),
-            legendReadVal: document.getElementById("legend-read-val"),
-            legendWriteVal: document.getElementById("legend-write-val"),
-            legendIopsVal: document.getElementById("legend-iops-val"),
+            // Telemetry Charts (Storage I/O, CPU Load, Memory)
+            plotIoSvg: document.getElementById("telemetry-plot-io-svg"),
+            legendIoReadVal: document.getElementById("legend-io-read-val"),
+            legendIoWriteVal: document.getElementById("legend-io-write-val"),
+            legendIoIopsVal: document.getElementById("legend-io-iops-val"),
+
+            plotCpuSvg: document.getElementById("telemetry-plot-cpu-svg"),
+            legendCpuVal: document.getElementById("legend-cpu-val"),
+            legendCpuLoadVal: document.getElementById("legend-cpu-load-val"),
+
+            plotRamSvg: document.getElementById("telemetry-plot-ram-svg"),
+            legendRamVal: document.getElementById("legend-ram-val"),
+            legendSwapVal: document.getElementById("legend-swap-val"),
 
             // Overview Stat Cards
             storageHugeVal: document.getElementById("storage-huge-val"),
@@ -182,7 +186,7 @@
         } else {
             document.body.classList.remove("theme-light");
         }
-        renderPlot();
+        renderAllPlots();
     }
 
     // Data Collector Query
@@ -686,6 +690,10 @@
         if (!data) return;
 
         // Push History for Plots
+        const ts = data.timestamp || Date.now();
+        state.history.timestamps.push(ts);
+        if (state.history.timestamps.length > state.historyLength) state.history.timestamps.shift();
+
         state.history.cpu.push(data.cpu.totalUsage);
         if (state.history.cpu.length > state.historyLength) state.history.cpu.shift();
 
@@ -702,8 +710,8 @@
         if (state.history.diskReadMB.length > state.historyLength) state.history.diskReadMB.shift();
         if (state.history.diskWriteMB.length > state.historyLength) state.history.diskWriteMB.shift();
 
-        // 1. Update Top Plot Card
-        renderPlot(data);
+        // 1. Update Telemetry Charts (Storage I/O, CPU Load, Memory)
+        renderAllPlots(data);
 
         // 2. Update Storage Stat Card
         const stPct = data.storage.globalUsagePct;
@@ -770,146 +778,307 @@
         updateMemoryDetails(data.memory);
     }
 
-    // Top Plot Rendering (Cockpit ct-plot implementation)
-    function renderPlot(data) {
-        const svg = el.telemetryPlotSvg;
-        if (!svg) return;
-
-        const isLight = document.body.classList.contains("theme-light");
-        const gridColor = isLight ? "#d2d2d2" : "#36373a";
-        const width = svg.clientWidth || 800;
-        const height = svg.clientHeight || 160;
-        const padX = 50;
-        const padY = 16;
-        const plotW = width - padX - 16;
-        const plotH = height - padY * 2;
-
-        if (state.plotView === "io") {
-            // Update Legend
-            if (el.plotLegend) {
-                const curRead = state.history.diskReadMB.length ? state.history.diskReadMB[state.history.diskReadMB.length - 1] : 0;
-                const curWrite = state.history.diskWriteMB.length ? state.history.diskWriteMB[state.history.diskWriteMB.length - 1] : 0;
-                const curIops = data ? Math.round(data.io.totalIops) : 0;
-                el.plotLegend.innerHTML = `
-                    <div class="ct-legend-item">
-                        <span class="ct-legend-dot" style="background-color: var(--pf-t--chart--color--blue--300);"></span>
-                        <span>Read: <strong style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">${formatRate(curRead * 1024 * 1024)}</strong></span>
-                    </div>
-                    <div class="ct-legend-item">
-                        <span class="ct-legend-dot" style="background-color: var(--pf-t--chart--color--orange--300);"></span>
-                        <span>Write: <strong style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">${formatRate(curWrite * 1024 * 1024)}</strong></span>
-                    </div>
-                    <div class="ct-legend-item">
-                        <span style="color: var(--pf-t--global--text--color--muted);">&bull;</span>
-                        <span>IOPS: <strong style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">${curIops}</strong></span>
-                    </div>
-                `;
-            }
-
-            // Render Dual Rate Curves
-            let maxVal = 2.0;
-            state.history.diskReadMB.forEach(v => { if (v > maxVal) maxVal = v; });
-            state.history.diskWriteMB.forEach(v => { if (v > maxVal) maxVal = v; });
-            maxVal = Math.ceil(maxVal * 1.2 * 10) / 10;
-
-            renderDualSeries(svg, state.history.diskReadMB, state.history.diskWriteMB, maxVal, "MB/s", "#0066cc", "rgba(0, 102, 204, 0.2)", "#ec7a08", "rgba(236, 122, 8, 0.2)", width, height, padX, padY, plotW, plotH, gridColor);
-
-        } else if (state.plotView === "cpu") {
-            const curCpu = state.history.cpu.length ? state.history.cpu[state.history.cpu.length - 1] : 0;
-            if (el.plotLegend) {
-                el.plotLegend.innerHTML = `
-                    <div class="ct-legend-item">
-                        <span class="ct-legend-dot" style="background-color: var(--pf-t--chart--color--blue--300);"></span>
-                        <span>CPU Load: <strong style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">${curCpu.toFixed(1)}%</strong></span>
-                    </div>
-                `;
-            }
-            renderSingleSeries(svg, state.history.cpu, 100, "%", "#0066cc", "rgba(0, 102, 204, 0.25)", width, height, padX, padY, plotW, plotH, gridColor);
-
-        } else if (state.plotView === "ram") {
-            const curRam = state.history.ram.length ? state.history.ram[state.history.ram.length - 1] : 0;
-            const curSwap = state.history.swap.length ? state.history.swap[state.history.swap.length - 1] : 0;
-            if (el.plotLegend) {
-                el.plotLegend.innerHTML = `
-                    <div class="ct-legend-item">
-                        <span class="ct-legend-dot" style="background-color: #8b5cf6;"></span>
-                        <span>RAM: <strong style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">${curRam.toFixed(1)}%</strong></span>
-                    </div>
-                    <div class="ct-legend-item">
-                        <span class="ct-legend-dot" style="background-color: #009596;"></span>
-                        <span>Swap: <strong style="font-family: var(--pf-t--global--font--family--mono); color: var(--pf-t--global--text--color--regular);">${curSwap.toFixed(1)}%</strong></span>
-                    </div>
-                `;
-            }
-            renderDualSeries(svg, state.history.ram, state.history.swap, 100, "%", "#8b5cf6", "rgba(139, 92, 246, 0.2)", "#009596", "rgba(0, 149, 150, 0.2)", width, height, padX, padY, plotW, plotH, gridColor);
-        }
+    // Time Formatter for Time-Stamped X-Axis (HH:MM:SS)
+    function formatTime(ts) {
+        const d = new Date(ts);
+        const h = String(d.getHours()).padStart(2, "0");
+        const m = String(d.getMinutes()).padStart(2, "0");
+        const s = String(d.getSeconds()).padStart(2, "0");
+        return `${h}:${m}:${s}`;
     }
 
-    function renderSingleSeries(svg, series, maxVal, unit, strokeColor, fillColor, width, height, padX, padY, plotW, plotH, gridColor) {
-        if (!series || series.length === 0) {
-            svg.innerHTML = `<text x="${width/2}" y="${height/2}" fill="gray" text-anchor="middle">Collecting data...</text>`;
-            return;
-        }
-
+    // Shared Series Path Computation for Area-Fill and Trendlines
+    function computeSeriesPaths(series, maxVal, padLeft, padTop, plotW, plotH, baseY) {
+        if (!series || series.length === 0) return null;
         const maxPoints = state.historyLength;
         const stepX = plotW / (maxPoints - 1);
         const points = series.map((val, i) => {
-            const x = padX + (maxPoints - series.length + i) * stepX;
-            const y = padY + plotH - (Math.max(0, Math.min(maxVal, val)) / maxVal) * plotH;
-            return { x, y };
+            const x = padLeft + (maxPoints - series.length + i) * stepX;
+            const clamped = Math.max(0, Math.min(maxVal, val));
+            const y = baseY - (clamped / (maxVal || 1)) * plotH;
+            return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
         });
 
+        if (points.length === 1) {
+            const pt = points[0];
+            const linePath = `M ${padLeft} ${pt.y} L ${pt.x} ${pt.y}`;
+            const areaPath = `M ${padLeft} ${pt.y} L ${pt.x} ${pt.y} L ${pt.x} ${baseY} L ${padLeft} ${baseY} Z`;
+            return { linePath, areaPath, lastPoint: pt };
+        }
+
         let linePath = `M ${points[0].x} ${points[0].y}`;
-        for (let i = 1; i < points.length; i++) linePath += ` L ${points[i].x} ${points[i].y}`;
-        const areaPath = `${linePath} L ${points[points.length - 1].x} ${padY + plotH} L ${points[0].x} ${padY + plotH} Z`;
+        for (let i = 1; i < points.length; i++) {
+            linePath += ` L ${points[i].x} ${points[i].y}`;
+        }
+        const areaPath = `${linePath} L ${points[points.length - 1].x} ${baseY} L ${points[0].x} ${baseY} Z`;
+        return { linePath, areaPath, lastPoint: points[points.length - 1] };
+    }
+
+    // Master Plot Renderer - Updates All 3 Simultaneous Telemetry Charts
+    function renderAllPlots(data) {
+        renderIoPlot(data);
+        renderCpuPlot(data);
+        renderMemoryPlot(data);
+    }
+
+    // 1. Storage I/O Chart Renderer
+    function renderIoPlot(data) {
+        const svg = el.plotIoSvg;
+        if (!svg) return;
+
+        const curRead = state.history.diskReadMB.length ? state.history.diskReadMB[state.history.diskReadMB.length - 1] : (data ? data.io.totalReadBytesSec / (1024 * 1024) : 0);
+        const curWrite = state.history.diskWriteMB.length ? state.history.diskWriteMB[state.history.diskWriteMB.length - 1] : (data ? data.io.totalWriteBytesSec / (1024 * 1024) : 0);
+        const curIops = data ? Math.round(data.io.totalIops) : (el.legendIoIopsVal ? el.legendIoIopsVal.textContent : 0);
+
+        if (el.legendIoReadVal) el.legendIoReadVal.textContent = formatRate(curRead * 1024 * 1024);
+        if (el.legendIoWriteVal) el.legendIoWriteVal.textContent = formatRate(curWrite * 1024 * 1024);
+        if (el.legendIoIopsVal) el.legendIoIopsVal.textContent = curIops;
+
+        const width = svg.clientWidth || 500;
+        const height = svg.clientHeight || 160;
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+        const padLeft = 58;
+        const padRight = 14;
+        const padTop = 14;
+        const padBottom = 22;
+        const plotW = Math.max(10, width - padLeft - padRight);
+        const plotH = Math.max(10, height - padTop - padBottom);
+        const baseY = padTop + plotH;
+
+        const isLight = document.body.classList.contains("theme-light");
+        const gridColor = isLight ? "#d2d2d2" : "#36373a";
+
+        // Determine dynamic maxVal and independent Y-axis values
+        let maxRecorded = 0;
+        state.history.diskReadMB.forEach(v => { if (v > maxRecorded) maxRecorded = v; });
+        state.history.diskWriteMB.forEach(v => { if (v > maxRecorded) maxRecorded = v; });
+
+        let yScaleMax = 1.0;
+        let yLabels = ["1.0 MB/s", "0.5", "0 MB/s"];
+
+        if (maxRecorded > 0.05) {
+            const targetMax = maxRecorded * 1.25;
+            if (targetMax >= 1.0) {
+                yScaleMax = Math.ceil(targetMax * 10) / 10;
+                yLabels = [`${yScaleMax.toFixed(1)} MB/s`, `${(yScaleMax / 2).toFixed(1)}`, `0 MB/s`];
+            } else {
+                const maxKB = Math.ceil((targetMax * 1024) / 50) * 50 || 100;
+                yScaleMax = maxKB / 1024;
+                yLabels = [`${maxKB} KB/s`, `${Math.round(maxKB / 2)}`, `0 KB/s`];
+            }
+        }
+
+        // Time-stamped X-axis values
+        const now = state.history.timestamps.length ? state.history.timestamps[state.history.timestamps.length - 1] : Date.now();
+        const windowSpanMs = (state.historyLength - 1) * state.intervalMs;
+        const tEnd = formatTime(now);
+        const tMid = formatTime(now - windowSpanMs / 2);
+        const tStart = formatTime(now - windowSpanMs);
+
+        const readPaths = computeSeriesPaths(state.history.diskReadMB, yScaleMax, padLeft, padTop, plotW, plotH, baseY);
+        const writePaths = computeSeriesPaths(state.history.diskWriteMB, yScaleMax, padLeft, padTop, plotW, plotH, baseY);
 
         svg.innerHTML = `
-            <line class="ct-plot-lines" x1="${padX}" y1="${padY}" x2="${width - 16}" y2="${padY}" stroke="${gridColor}" />
-            <line class="ct-plot-lines" x1="${padX}" y1="${padY + plotH * 0.5}" x2="${width - 16}" y2="${padY + plotH * 0.5}" stroke="${gridColor}" />
-            <line class="ct-plot-lines" x1="${padX}" y1="${padY + plotH}" x2="${width - 16}" y2="${padY + plotH}" stroke="${gridColor}" />
+            <defs>
+                <linearGradient id="grad-io-read" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#0066cc" stop-opacity="0.35"/>
+                    <stop offset="100%" stop-color="#0066cc" stop-opacity="0.04"/>
+                </linearGradient>
+                <linearGradient id="grad-io-write" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#ec7a08" stop-opacity="0.35"/>
+                    <stop offset="100%" stop-color="#ec7a08" stop-opacity="0.04"/>
+                </linearGradient>
+            </defs>
 
-            <text class="ct-plot-axis" x="${padX - 8}" y="${padY + 4}" text-anchor="end">${maxVal}${unit}</text>
-            <text class="ct-plot-axis" x="${padX - 8}" y="${padY + plotH * 0.5 + 4}" text-anchor="end">${Math.round(maxVal / 2)}${unit}</text>
-            <text class="ct-plot-axis" x="${padX - 8}" y="${padY + plotH + 4}" text-anchor="end">0${unit}</text>
+            <!-- Horizontal Grid Lines -->
+            <line class="ct-plot-lines" x1="${padLeft}" y1="${padTop}" x2="${padLeft + plotW}" y2="${padTop}" stroke="${gridColor}" />
+            <line class="ct-plot-lines" x1="${padLeft}" y1="${padTop + plotH * 0.5}" x2="${padLeft + plotW}" y2="${padTop + plotH * 0.5}" stroke="${gridColor}" />
+            <line class="ct-plot-lines" x1="${padLeft}" y1="${baseY}" x2="${padLeft + plotW}" y2="${baseY}" stroke="${gridColor}" />
 
-            <path d="${areaPath}" fill="${fillColor}" />
-            <path d="${linePath}" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" />
-            <circle cx="${points[points.length - 1].x}" cy="${points[points.length - 1].y}" r="3" fill="${strokeColor}" />
+            <!-- Independent Y-Axis Values -->
+            <text class="ct-plot-axis" x="${padLeft - 6}" y="${padTop + 4}" text-anchor="end">${yLabels[0]}</text>
+            <text class="ct-plot-axis" x="${padLeft - 6}" y="${padTop + plotH * 0.5 + 4}" text-anchor="end">${yLabels[1]}</text>
+            <text class="ct-plot-axis" x="${padLeft - 6}" y="${baseY + 4}" text-anchor="end">${yLabels[2]}</text>
+
+            <!-- Time-stamped X-Axis Ticks & Labels -->
+            <line class="ct-plot-tick" x1="${padLeft}" y1="${baseY}" x2="${padLeft}" y2="${baseY + 4}" stroke="${gridColor}" />
+            <line class="ct-plot-tick" x1="${padLeft + plotW * 0.5}" y1="${baseY}" x2="${padLeft + plotW * 0.5}" y2="${baseY + 4}" stroke="${gridColor}" />
+            <line class="ct-plot-tick" x1="${padLeft + plotW}" y1="${baseY}" x2="${padLeft + plotW}" y2="${baseY + 4}" stroke="${gridColor}" />
+
+            <text class="ct-plot-axis" x="${padLeft}" y="${baseY + 16}" text-anchor="start">${tStart}</text>
+            <text class="ct-plot-axis" x="${padLeft + plotW * 0.5}" y="${baseY + 16}" text-anchor="middle">${tMid}</text>
+            <text class="ct-plot-axis" x="${padLeft + plotW}" y="${baseY + 16}" text-anchor="end">${tEnd}</text>
+
+            <!-- Area Fills & Trendlines -->
+            ${readPaths ? `
+                <path d="${readPaths.areaPath}" fill="url(#grad-io-read)" />
+                <path d="${readPaths.linePath}" fill="none" stroke="#0066cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                <circle cx="${readPaths.lastPoint.x}" cy="${readPaths.lastPoint.y}" r="3" fill="#0066cc" />
+            ` : ""}
+            ${writePaths ? `
+                <path d="${writePaths.areaPath}" fill="url(#grad-io-write)" />
+                <path d="${writePaths.linePath}" fill="none" stroke="#ec7a08" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                <circle cx="${writePaths.lastPoint.x}" cy="${writePaths.lastPoint.y}" r="3" fill="#ec7a08" />
+            ` : ""}
         `;
     }
 
-    function renderDualSeries(svg, s1, s2, maxVal, unit, c1, a1, c2, a2, width, height, padX, padY, plotW, plotH, gridColor) {
-        const maxPoints = state.historyLength;
-        const stepX = plotW / (maxPoints - 1);
+    // 2. CPU Load Chart Renderer
+    function renderCpuPlot(data) {
+        const svg = el.plotCpuSvg;
+        if (!svg) return;
 
-        function toPoints(series) {
-            return series.map((val, i) => {
-                const x = padX + (maxPoints - series.length + i) * stepX;
-                const y = padY + plotH - (Math.max(0, Math.min(maxVal, val)) / maxVal) * plotH;
-                return { x, y };
-            });
-        }
+        const curCpu = state.history.cpu.length ? state.history.cpu[state.history.cpu.length - 1] : (data ? data.cpu.totalUsage : 0);
+        const curLoad = data ? data.loadAvg.load1 : (el.legendCpuLoadVal ? el.legendCpuLoadVal.textContent : "0.00");
 
-        const pts1 = toPoints(s1);
-        const pts2 = toPoints(s2);
+        if (el.legendCpuVal) el.legendCpuVal.textContent = curCpu.toFixed(1) + "%";
+        if (el.legendCpuLoadVal) el.legendCpuLoadVal.textContent = curLoad;
 
-        let path1 = pts1.length ? `M ${pts1[0].x} ${pts1[0].y}` : "";
-        for (let i = 1; i < pts1.length; i++) path1 += ` L ${pts1[i].x} ${pts1[i].y}`;
+        const width = svg.clientWidth || 500;
+        const height = svg.clientHeight || 160;
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
 
-        let path2 = pts2.length ? `M ${pts2[0].x} ${pts2[0].y}` : "";
-        for (let i = 1; i < pts2.length; i++) path2 += ` L ${pts2[i].x} ${pts2[i].y}`;
+        const padLeft = 48;
+        const padRight = 14;
+        const padTop = 14;
+        const padBottom = 22;
+        const plotW = Math.max(10, width - padLeft - padRight);
+        const plotH = Math.max(10, height - padTop - padBottom);
+        const baseY = padTop + plotH;
+
+        const isLight = document.body.classList.contains("theme-light");
+        const gridColor = isLight ? "#d2d2d2" : "#36373a";
+
+        const yScaleMax = 100;
+        const yLabels = ["100%", "50%", "0%"];
+
+        // Time-stamped X-axis values
+        const now = state.history.timestamps.length ? state.history.timestamps[state.history.timestamps.length - 1] : Date.now();
+        const windowSpanMs = (state.historyLength - 1) * state.intervalMs;
+        const tEnd = formatTime(now);
+        const tMid = formatTime(now - windowSpanMs / 2);
+        const tStart = formatTime(now - windowSpanMs);
+
+        const cpuPaths = computeSeriesPaths(state.history.cpu, yScaleMax, padLeft, padTop, plotW, plotH, baseY);
 
         svg.innerHTML = `
-            <line class="ct-plot-lines" x1="${padX}" y1="${padY}" x2="${width - 16}" y2="${padY}" stroke="${gridColor}" />
-            <line class="ct-plot-lines" x1="${padX}" y1="${padY + plotH * 0.5}" x2="${width - 16}" y2="${padY + plotH * 0.5}" stroke="${gridColor}" />
-            <line class="ct-plot-lines" x1="${padX}" y1="${padY + plotH}" x2="${width - 16}" y2="${padY + plotH}" stroke="${gridColor}" />
+            <defs>
+                <linearGradient id="grad-cpu" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#0066cc" stop-opacity="0.38"/>
+                    <stop offset="100%" stop-color="#0066cc" stop-opacity="0.04"/>
+                </linearGradient>
+            </defs>
 
-            <text class="ct-plot-axis" x="${padX - 8}" y="${padY + 4}" text-anchor="end">${maxVal}${unit}</text>
-            <text class="ct-plot-axis" x="${padX - 8}" y="${padY + plotH * 0.5 + 4}" text-anchor="end">${(maxVal / 2).toFixed(1)}${unit}</text>
-            <text class="ct-plot-axis" x="${padX - 8}" y="${padY + plotH + 4}" text-anchor="end">0${unit}</text>
+            <!-- Horizontal Grid Lines -->
+            <line class="ct-plot-lines" x1="${padLeft}" y1="${padTop}" x2="${padLeft + plotW}" y2="${padTop}" stroke="${gridColor}" />
+            <line class="ct-plot-lines" x1="${padLeft}" y1="${padTop + plotH * 0.5}" x2="${padLeft + plotW}" y2="${padTop + plotH * 0.5}" stroke="${gridColor}" />
+            <line class="ct-plot-lines" x1="${padLeft}" y1="${baseY}" x2="${padLeft + plotW}" y2="${baseY}" stroke="${gridColor}" />
 
-            ${path1 ? `<path d="${path1}" fill="none" stroke="${c1}" stroke-width="2" stroke-linecap="round" />` : ""}
-            ${path2 ? `<path d="${path2}" fill="none" stroke="${c2}" stroke-width="2" stroke-linecap="round" />` : ""}
+            <!-- Independent Y-Axis Values -->
+            <text class="ct-plot-axis" x="${padLeft - 6}" y="${padTop + 4}" text-anchor="end">${yLabels[0]}</text>
+            <text class="ct-plot-axis" x="${padLeft - 6}" y="${padTop + plotH * 0.5 + 4}" text-anchor="end">${yLabels[1]}</text>
+            <text class="ct-plot-axis" x="${padLeft - 6}" y="${baseY + 4}" text-anchor="end">${yLabels[2]}</text>
+
+            <!-- Time-stamped X-Axis Ticks & Labels -->
+            <line class="ct-plot-tick" x1="${padLeft}" y1="${baseY}" x2="${padLeft}" y2="${baseY + 4}" stroke="${gridColor}" />
+            <line class="ct-plot-tick" x1="${padLeft + plotW * 0.5}" y1="${baseY}" x2="${padLeft + plotW * 0.5}" y2="${baseY + 4}" stroke="${gridColor}" />
+            <line class="ct-plot-tick" x1="${padLeft + plotW}" y1="${baseY}" x2="${padLeft + plotW}" y2="${baseY + 4}" stroke="${gridColor}" />
+
+            <text class="ct-plot-axis" x="${padLeft}" y="${baseY + 16}" text-anchor="start">${tStart}</text>
+            <text class="ct-plot-axis" x="${padLeft + plotW * 0.5}" y="${baseY + 16}" text-anchor="middle">${tMid}</text>
+            <text class="ct-plot-axis" x="${padLeft + plotW}" y="${baseY + 16}" text-anchor="end">${tEnd}</text>
+
+            <!-- Area Fill & Trendline -->
+            ${cpuPaths ? `
+                <path d="${cpuPaths.areaPath}" fill="url(#grad-cpu)" />
+                <path d="${cpuPaths.linePath}" fill="none" stroke="#0066cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                <circle cx="${cpuPaths.lastPoint.x}" cy="${cpuPaths.lastPoint.y}" r="3" fill="#0066cc" />
+            ` : ""}
+        `;
+    }
+
+    // 3. Memory Chart Renderer
+    function renderMemoryPlot(data) {
+        const svg = el.plotRamSvg;
+        if (!svg) return;
+
+        const curRam = state.history.ram.length ? state.history.ram[state.history.ram.length - 1] : (data ? data.memory.usedPct : 0);
+        const curSwap = state.history.swap.length ? state.history.swap[state.history.swap.length - 1] : (data ? data.memory.swapPct : 0);
+
+        if (el.legendRamVal) el.legendRamVal.textContent = curRam.toFixed(1) + "%";
+        if (el.legendSwapVal) el.legendSwapVal.textContent = curSwap.toFixed(1) + "%";
+
+        const width = svg.clientWidth || 500;
+        const height = svg.clientHeight || 160;
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+        const padLeft = 48;
+        const padRight = 14;
+        const padTop = 14;
+        const padBottom = 22;
+        const plotW = Math.max(10, width - padLeft - padRight);
+        const plotH = Math.max(10, height - padTop - padBottom);
+        const baseY = padTop + plotH;
+
+        const isLight = document.body.classList.contains("theme-light");
+        const gridColor = isLight ? "#d2d2d2" : "#36373a";
+
+        const yScaleMax = 100;
+        const yLabels = ["100%", "50%", "0%"];
+
+        // Time-stamped X-axis values
+        const now = state.history.timestamps.length ? state.history.timestamps[state.history.timestamps.length - 1] : Date.now();
+        const windowSpanMs = (state.historyLength - 1) * state.intervalMs;
+        const tEnd = formatTime(now);
+        const tMid = formatTime(now - windowSpanMs / 2);
+        const tStart = formatTime(now - windowSpanMs);
+
+        const ramPaths = computeSeriesPaths(state.history.ram, yScaleMax, padLeft, padTop, plotW, plotH, baseY);
+        const swapPaths = computeSeriesPaths(state.history.swap, yScaleMax, padLeft, padTop, plotW, plotH, baseY);
+
+        svg.innerHTML = `
+            <defs>
+                <linearGradient id="grad-ram" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.38"/>
+                    <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.04"/>
+                </linearGradient>
+                <linearGradient id="grad-swap" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#009596" stop-opacity="0.30"/>
+                    <stop offset="100%" stop-color="#009596" stop-opacity="0.03"/>
+                </linearGradient>
+            </defs>
+
+            <!-- Horizontal Grid Lines -->
+            <line class="ct-plot-lines" x1="${padLeft}" y1="${padTop}" x2="${padLeft + plotW}" y2="${padTop}" stroke="${gridColor}" />
+            <line class="ct-plot-lines" x1="${padLeft}" y1="${padTop + plotH * 0.5}" x2="${padLeft + plotW}" y2="${padTop + plotH * 0.5}" stroke="${gridColor}" />
+            <line class="ct-plot-lines" x1="${padLeft}" y1="${baseY}" x2="${padLeft + plotW}" y2="${baseY}" stroke="${gridColor}" />
+
+            <!-- Independent Y-Axis Values -->
+            <text class="ct-plot-axis" x="${padLeft - 6}" y="${padTop + 4}" text-anchor="end">${yLabels[0]}</text>
+            <text class="ct-plot-axis" x="${padLeft - 6}" y="${padTop + plotH * 0.5 + 4}" text-anchor="end">${yLabels[1]}</text>
+            <text class="ct-plot-axis" x="${padLeft - 6}" y="${baseY + 4}" text-anchor="end">${yLabels[2]}</text>
+
+            <!-- Time-stamped X-Axis Ticks & Labels -->
+            <line class="ct-plot-tick" x1="${padLeft}" y1="${baseY}" x2="${padLeft}" y2="${baseY + 4}" stroke="${gridColor}" />
+            <line class="ct-plot-tick" x1="${padLeft + plotW * 0.5}" y1="${baseY}" x2="${padLeft + plotW * 0.5}" y2="${baseY + 4}" stroke="${gridColor}" />
+            <line class="ct-plot-tick" x1="${padLeft + plotW}" y1="${baseY}" x2="${padLeft + plotW}" y2="${baseY + 4}" stroke="${gridColor}" />
+
+            <text class="ct-plot-axis" x="${padLeft}" y="${baseY + 16}" text-anchor="start">${tStart}</text>
+            <text class="ct-plot-axis" x="${padLeft + plotW * 0.5}" y="${baseY + 16}" text-anchor="middle">${tMid}</text>
+            <text class="ct-plot-axis" x="${padLeft + plotW}" y="${baseY + 16}" text-anchor="end">${tEnd}</text>
+
+            <!-- Area Fills & Trendlines -->
+            ${swapPaths && curSwap > 0 ? `
+                <path d="${swapPaths.areaPath}" fill="url(#grad-swap)" />
+                <path d="${swapPaths.linePath}" fill="none" stroke="#009596" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                <circle cx="${swapPaths.lastPoint.x}" cy="${swapPaths.lastPoint.y}" r="2.5" fill="#009596" />
+            ` : ""}
+            ${ramPaths ? `
+                <path d="${ramPaths.areaPath}" fill="url(#grad-ram)" />
+                <path d="${ramPaths.linePath}" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                <circle cx="${ramPaths.lastPoint.x}" cy="${ramPaths.lastPoint.y}" r="3" fill="#8b5cf6" />
+            ` : ""}
         `;
     }
 
@@ -1264,35 +1433,6 @@
             });
         }
 
-        // Plot View Switcher Tabs
-        if (el.tabPlotIo) {
-            el.tabPlotIo.addEventListener("click", () => {
-                state.plotView = "io";
-                el.tabPlotIo.classList.add("active");
-                if (el.tabPlotCpu) el.tabPlotCpu.classList.remove("active");
-                if (el.tabPlotRam) el.tabPlotRam.classList.remove("active");
-                renderPlot();
-            });
-        }
-        if (el.tabPlotCpu) {
-            el.tabPlotCpu.addEventListener("click", () => {
-                state.plotView = "cpu";
-                el.tabPlotCpu.classList.add("active");
-                if (el.tabPlotIo) el.tabPlotIo.classList.remove("active");
-                if (el.tabPlotRam) el.tabPlotRam.classList.remove("active");
-                renderPlot();
-            });
-        }
-        if (el.tabPlotRam) {
-            el.tabPlotRam.addEventListener("click", () => {
-                state.plotView = "ram";
-                el.tabPlotRam.classList.add("active");
-                if (el.tabPlotIo) el.tabPlotIo.classList.remove("active");
-                if (el.tabPlotCpu) el.tabPlotCpu.classList.remove("active");
-                renderPlot();
-            });
-        }
-
         // Search Filter
         if (el.storageSearchInput) {
             el.storageSearchInput.addEventListener("input", (e) => {
@@ -1324,7 +1464,7 @@
         let resizeDebounce = null;
         window.addEventListener("resize", () => {
             clearTimeout(resizeDebounce);
-            resizeDebounce = setTimeout(renderPlot, 100);
+            resizeDebounce = setTimeout(renderAllPlots, 100);
         });
     }
 

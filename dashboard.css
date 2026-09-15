@@ -334,23 +334,86 @@ html, body {
     padding: 0;
 }
 
-/* Plot Card (Top Wide Real-Time Chart - Identical to Cockpit Networking) */
+/* PatternFly 6 Layout: Grid */
+.pf-v6-l-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    width: 100%;
+}
+
+.pf-v6-l-grid.pf-m-gutter,
+.pf-v6-l-grid.pf-v6-m-gutter {
+    gap: var(--pf-t--global--spacer--md);
+}
+
+.pf-v6-l-grid__item {
+    min-width: 0;
+}
+
+.pf-v6-l-grid__item.pf-m-12-col,
+.pf-v6-l-grid__item.pf-v6-m-12-col {
+    grid-column: span 12;
+}
+
+@media (min-width: 992px) {
+    .pf-v6-l-grid__item.pf-m-4-col-on-lg,
+    .pf-v6-l-grid__item.pf-v6-m-4-col-on-lg {
+        grid-column: span 4;
+    }
+    .pf-v6-l-grid__item.pf-m-6-col-on-lg,
+    .pf-v6-l-grid__item.pf-v6-m-6-col-on-lg {
+        grid-column: span 6;
+    }
+}
+
+/* Multi-column Telemetry Grid (PatternFly 6 Responsive Multi-Column Pattern) */
+.ct-telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: var(--pf-t--global--spacer--md);
+    width: 100%;
+}
+
+.ct-telemetry-grid-item {
+    grid-column: span 12;
+    min-width: 0;
+}
+
+@media (min-width: 992px) {
+    .ct-telemetry-grid-item {
+        grid-column: span 4;
+    }
+}
+
+/* Plot Card (Multi-column simultaneous real-time telemetry cards) */
 .ct-plot-card {
     background-color: var(--pf-t--global--background--color--card--default);
     border: 1px solid var(--pf-t--global--border--color--default);
     border-radius: var(--pf-t--global--border--radius--md);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
 
 .ct-plot-header {
-    padding: 12px 20px;
+    padding: 10px 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--pf-t--global--border--color--default);
     background-color: var(--pf-t--global--background--color--secondary--default);
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 8px;
+    min-height: 48px;
+}
+
+.ct-plot-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--pf-t--global--text--color--regular);
+    letter-spacing: -0.01em;
+    margin: 0;
 }
 
 .ct-plot-tabs {
@@ -383,34 +446,40 @@ html, body {
 .ct-plot-legend {
     display: flex;
     align-items: center;
-    gap: 16px;
-    font-size: 0.8rem;
+    gap: 12px;
+    font-size: 0.78rem;
     color: var(--pf-t--global--text--color--secondary);
+    flex-wrap: wrap;
 }
 
 .ct-legend-item {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
+    white-space: nowrap;
 }
 
 .ct-legend-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
+    flex-shrink: 0;
 }
 
 .ct-plot-container {
     width: 100%;
     height: 160px;
-    padding: 12px 16px;
+    padding: 10px 12px 8px 8px;
     position: relative;
+    box-sizing: border-box;
 }
 
 /* SVG Chart Engine Styling - Cockpit ct-plot styles */
 .ct-plot {
     width: 100%;
     height: 100%;
+    display: block;
+    overflow: visible;
     font-family: var(--pf-t--global--font--family--body);
 }
 
@@ -424,10 +493,16 @@ html, body {
     stroke-dasharray: 3 3;
 }
 
+.ct-plot-tick {
+    stroke: var(--pf-t--chart--global--fill--color--300);
+    stroke-width: 1;
+}
+
 .ct-plot-axis, .ct-plot-unit {
     font-size: 10px;
     font-family: var(--pf-t--global--font--family--mono);
     fill: var(--pf-t--chart--global--fill--color--700);
+    user-select: none;
 }
 
 /* Overview Summary Grid (Networking stat cards) */
